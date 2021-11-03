@@ -45,3 +45,32 @@ let logger = Logger(label: "com.example.MyApp.main")
 
 logger.critical("Something went wrong!")
 ```
+
+## Upload crash reports
+SwiftSentry can also upload stack traces generated on Linux with [Swift Backtrace](https://github.com/swift-server/swift-backtrace).
+
+The following configuration assumes that you run an "API service" based on Swift with `supervisord` following a typical [vapor deployment](https://docs.vapor.codes/4.0/deploy/supervisor/).
+
+Stack traces are uploaded at each start of your "API service". If your application crashes, a stack trace will be printed on `stderr` and written to a log file specified in `supervisord`. Once your application is restarted, SwiftSentry will read this log file and upload it to Sentry. Because 
+
+```swift
+import SwiftSentry
+
+let sentry = SwiftSentry(dsn: "https://bdff91e76.....@o4885.....ingest.sentry.io/5609....")
+
+// Upload stack trace from a log file
+// WARNING: the error file will be truncated afterwards
+sentry.uploadStackTrace(path: "/var/log/supervisor/hello-stderr.log")
+```
+
+
+Supervisor configuration at `/etc/supervisor/conf.d/hello.conf`:
+
+```
+[program:hello]
+command=/home/vapor/hello/.build/release/Run serve --env production
+directory=/home/vapor/hello/
+user=vapor
+stdout_logfile=/var/log/supervisor/%(program_name)-stdout.log
+stderr_logfile=/var/log/supervisor/%(program_name)-stderr.log
+```
