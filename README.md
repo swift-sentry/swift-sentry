@@ -24,7 +24,7 @@ WARNING: Under development!
 import Logging
 import SwiftSentry
 
-let sentry = SwiftSentry(url: "https://bdff91e76.....@o4885.....ingest.sentry.io/5609....")
+let sentry = SwiftSentry(dsn: "https://bdff91e76.....@o4885.....ingest.sentry.io/5609....")
 
 // Add sentry to logger and set the minimum log level to `.error`
 LoggingSystem.bootstrap { label in
