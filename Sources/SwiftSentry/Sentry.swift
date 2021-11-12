@@ -17,16 +17,20 @@ public struct Sentry {
     }
 
     private let dns: Dsn
-    private var httpClient: HTTPClient?
-    private var servername = ""
-    private var environment = ""
+    private var httpClient: HTTPClient
+    private var servername: String?
+    private var environment: String?
 
-    public init(url: String, eventLoop: EventLoopGroup, servername: String, environment: String) throws {
-        self.dns = try Dsn(fromString: url)
-        self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(eventLoop))
+    public init(dns: String, _ eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .createNew, servername: String? = nil, environment: String? = nil) throws {
+        self.dns = try Dsn(fromString: dns)
+        self.httpClient = HTTPClient(eventLoopGroupProvider: eventLoopGroupProvider)
         self.servername = servername
         self.environment = environment
         Sentry.instance = self
+    }
+
+    public func shutdown() throws {
+        try httpClient.syncShutdown()
     }
 
     public func captureError(error: Error) {
@@ -59,11 +63,6 @@ public struct Sentry {
             return
         }
 
-        guard let client = httpClient else {
-            print("Can't send sentry event")
-            return
-        }
-
         guard var request = try? HTTPClient.Request(url: dns.getStoreApiEndpointUrl(), method: .POST) else {
             print("Can't create request")
             return
@@ -74,7 +73,7 @@ public struct Sentry {
         request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dns.getAuthHeader())
         request.body = HTTPClient.Body.data(data)
 
-        _ = client.execute(request: request).map({ resp -> Void in
+        _ = httpClient.execute(request: request).map({ resp -> Void in
             guard var body = resp.body, let text = body.readString(length: body.readableBytes, encoding: .utf8) else {
                 print("No response body \(resp.status)")
                 return ()
@@ -85,3 +84,4 @@ public struct Sentry {
         })
     }
 }
+

@@ -14,7 +14,7 @@ WARNING: Under development!
     .package(url: "https://github.com/swift-sentry/swift-sentry.git", from: "1.0.0")
   ],
   targets: [
-    .target(name: "MyApp", dependencies: ["SwiftSentry"])
+    .target(name: "MyApp", dependencies: [.product(name: "SwiftSentry", package: "swift-sentry")])
   ]
 ```
 
