@@ -74,7 +74,7 @@ public struct Sentry {
         request.body = HTTPClient.Body.data(data)
 
         _ = httpClient.execute(request: request).map({ resp -> Void in
-            guard var body = resp.body, let text = body.readString(length: body.readableBytes, encoding: .utf8) else {
+            guard var body = resp.body, let text = body.readString(length: body.readableBytes /* , encoding: String.Encoding.utf8 */ ) else {
                 print("No response body \(resp.status)")
                 return ()
             }
