@@ -24,13 +24,13 @@ public struct Sentry {
 
     public init(
         dns: String,
-        _ eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .createNew,
-        servername: String? = nil,
+        httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .createNew),
+        servername: String? = Host.current().localizedName,
         release: String? = nil,
         environment: String? = nil
     ) throws {
         self.dns = try Dsn(fromString: dns)
-        self.httpClient = HTTPClient(eventLoopGroupProvider: eventLoopGroupProvider)
+        self.httpClient = httpClient
         self.servername = servername
         self.release = release
         self.environment = environment
