@@ -67,12 +67,13 @@ public struct SentryLogHandler: LogHandler {
                         stacktrace: Stacktrace(
                             frames: [
                                 Frame(
-                                    filename: file,
+                                    filename: nil,
                                     function: function,
                                     raw_function: nil,
                                     lineno: Int(line),
                                     colno: nil,
-                                    abs_path: nil
+                                    abs_path: file,
+                                    instruction_addr: nil
                                 )
                             ]
                         )

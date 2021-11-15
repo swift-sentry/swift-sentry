@@ -114,6 +114,9 @@ struct Frame: Encodable {
 
     /// Absolute path to the source file.
     let abs_path: String?
+
+    /// An optional instruction address for symbolication. This should be a string with a hexadecimal number that includes a `0x` prefix. If this is set and a known image is defined in the Debug Meta Interface, then symbolication can take place.
+    let instruction_addr: String?
 }
 
 struct Breadcrumbs: Encodable {
