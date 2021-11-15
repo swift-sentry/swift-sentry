@@ -10,11 +10,6 @@ import AsyncHTTPClient
 import NIO
 
 public struct Sentry {
-    private static var instance: Sentry?
-
-    public static func singleton() -> Sentry {
-        instance!
-    }
 
     private let dns: Dsn
     private var httpClient: HTTPClient
@@ -34,7 +29,6 @@ public struct Sentry {
         self.servername = servername
         self.release = release
         self.environment = environment
-        Sentry.instance = self
     }
 
     public func shutdown() throws {
