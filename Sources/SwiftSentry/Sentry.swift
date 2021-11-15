@@ -60,6 +60,65 @@ public struct Sentry {
         sendEvent(event: event)
     }
 
+    public func uploadStackTrace(path: String) throws {
+        // read all lines from the error log
+        let content = try String(contentsOfFile: path)
+
+        // empty the error log (we don't want to send events twice)
+        try "".write(toFile: path, atomically: true, encoding: .utf8)
+
+        let lines = content.split(separator: "\n")
+
+        var stacktraceFound = false
+        var frames = [Frame]()
+        var errorMessage = [String]()
+
+        for line in lines {
+            let l = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if l.isEmpty {
+                continue
+            }
+
+            switch (l.starts(with: "0x"), stacktraceFound) {
+            case (true, _):
+                // found a line of the stacktrace
+                stacktraceFound = true
+
+                if let posComma = l.firstIndex(of: ","), let posAt = l.range(of: " at /"), let posColon = l.lastIndex(of: ":") {
+                    let addr = String(l[l.startIndex ..< posComma])
+                    let functionName = String(l[l.index(posComma, offsetBy: 2) ..< posAt.lowerBound])
+                    let path = String(l[posAt.upperBound ..< posColon])
+                    let lineno = Int(l[l.index(posColon, offsetBy: 1) ..< l.endIndex])
+
+                    frames.insert(Frame(filename: nil, function: functionName, raw_function: nil, lineno: lineno, colno: nil, abs_path: path, instruction_addr: addr), at: 0)
+                } else {
+                    frames.insert(Frame(filename: nil, function: nil, raw_function: l, lineno: nil, colno: nil, abs_path: nil, instruction_addr: nil), at: 0)
+                }
+            case (false, false):
+                // found another header line
+                errorMessage.append(l)
+            case (false, true):
+                // if we find a non stacktrace line after a stacktrace, its a new error -> send current error to sentry and start a new error event
+                let event = Event(
+                    event_id: Event.generateEventId(),
+                    timestamp: Date().timeIntervalSince1970,
+                    level: .fatal,
+                    server_name: servername,
+                    release: release,
+                    environment: environment,
+                    exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: errorMessage.joined(separator: "\n"), stacktrace: Stacktrace(frames: frames))]),
+                    breadcrumbs: nil,
+                    user: nil
+                )
+                sendEvent(event: event)
+                stacktraceFound = false
+                frames = [Frame]()
+                errorMessage = [l]
+            }
+        }
+    }
+
     internal func sendEvent(event: Event) {
         guard let data = try? JSONEncoder().encode(event) else {
             print("Can't encode sentry event")
