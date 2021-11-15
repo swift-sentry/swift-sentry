@@ -8,13 +8,13 @@
 import Foundation
 import Logging
 
-struct SentryLogHandler: LogHandler {
+public struct SentryLogHandler: LogHandler {
     private let label: String
     private let sentry: Sentry
     public var metadata = Logger.Metadata()
     public var logLevel: Logger.Level
 
-    subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
+    public subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
         get {
             return self.metadata[metadataKey]
         }
@@ -23,13 +23,13 @@ struct SentryLogHandler: LogHandler {
         }
     }
 
-    init(label: String, sentry: Sentry, level: Logger.Level) {
+    public init(label: String, sentry: Sentry, level: Logger.Level) {
         self.label = label
         self.sentry = sentry
         self.logLevel = level
     }
 
-    func log(
+    public func log(
         level: Logger.Level,
         message: Logger.Message,
         metadata: Logger.Metadata?,
@@ -67,12 +67,12 @@ struct SentryLogHandler: LogHandler {
                         stacktrace: Stacktrace(
                             frames: [
                                 Frame(
-                                    filename: source,
+                                    filename: file,
                                     function: function,
                                     raw_function: nil,
                                     lineno: Int(line),
                                     colno: nil,
-                                    abs_path: file
+                                    abs_path: nil
                                 )
                             ]
                         )
