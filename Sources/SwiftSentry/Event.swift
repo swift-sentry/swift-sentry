@@ -80,11 +80,11 @@ struct Exceptions: Encodable {
 struct ExceptionDataBag: Encodable {
     /// The type of exception, e.g. `ValueError`.
     /// At least one of `type` or `value` is required, otherwise the exception is discarded.
-    let type: String
+    let type: String?
 
     /// Human readable display value.
     /// At least one of `type` or `value` is required, otherwise the exception is discarded.
-    let value: String
+    let value: String?
 
     /// Stack trace containing frames of this exception.
     let stacktrace: Stacktrace?

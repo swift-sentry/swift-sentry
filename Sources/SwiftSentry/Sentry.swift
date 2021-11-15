@@ -18,13 +18,21 @@ public struct Sentry {
 
     private let dns: Dsn
     private var httpClient: HTTPClient
-    private var servername: String?
-    private var environment: String?
+    internal var servername: String?
+    internal var release: String?
+    internal var environment: String?
 
-    public init(dns: String, _ eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .createNew, servername: String? = nil, environment: String? = nil) throws {
+    public init(
+        dns: String,
+        _ eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .createNew,
+        servername: String? = nil,
+        release: String? = nil,
+        environment: String? = nil
+    ) throws {
         self.dns = try Dsn(fromString: dns)
         self.httpClient = HTTPClient(eventLoopGroupProvider: eventLoopGroupProvider)
         self.servername = servername
+        self.release = release
         self.environment = environment
         Sentry.instance = self
     }
@@ -57,7 +65,7 @@ public struct Sentry {
         sendEvent(event: event)
     }
 
-    private func sendEvent(event: Event) {
+    internal func sendEvent(event: Event) {
         guard let data = try? JSONEncoder().encode(event) else {
             print("Can't encode sentry event")
             return
@@ -84,4 +92,3 @@ public struct Sentry {
         })
     }
 }
-
