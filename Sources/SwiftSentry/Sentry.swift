@@ -10,11 +10,7 @@ import AsyncHTTPClient
 import NIO
 
 public struct Sentry {
-    private static var instance: Sentry?
-
-    public static func singleton() -> Sentry {
-        instance!
-    }
+    internal static let VERSION = "SentrySwift/0.1.0"
 
     private let dns: Dsn
     private var httpClient: HTTPClient
@@ -34,7 +30,6 @@ public struct Sentry {
         self.servername = servername
         self.release = release
         self.environment = environment
-        Sentry.instance = self
     }
 
     public func shutdown() throws {
@@ -77,7 +72,7 @@ public struct Sentry {
         }
 
         request.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
-        request.headers.replaceOrAdd(name: "User-Agent", value: "SentrySwift/0.1.0")
+        request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
         request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dns.getAuthHeader())
         request.body = HTTPClient.Body.data(data)
 
