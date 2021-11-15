@@ -60,6 +60,50 @@ public struct Sentry {
         sendEvent(event: event)
     }
 
+    private func parseStacktrace(lines: [Substring]) -> [(msg: String, stacktace: Stacktrace)] {
+        var result = [(msg: String, stacktace: Stacktrace)]()
+
+        var stacktraceFound = false
+        var frames = [Frame]()
+        var errorMessage = [String]()
+
+        for l in lines {
+            let line = l.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if line.isEmpty {
+                continue
+            }
+
+            switch (line.starts(with: "0x"), stacktraceFound) {
+            case (true, _):
+                // found a line of the stacktrace
+                stacktraceFound = true
+
+                if let posComma = line.firstIndex(of: ","), let posAt = line.range(of: " at /"), let posColon = line.lastIndex(of: ":") {
+                    let addr = String(line[line.startIndex ..< posComma])
+                    let functionName = String(line[line.index(posComma, offsetBy: 2) ..< posAt.lowerBound])
+                    let path = String(line[posAt.upperBound ..< posColon])
+                    let lineno = Int(line[line.index(posColon, offsetBy: 1) ..< line.endIndex])
+
+                    frames.insert(Frame(filename: nil, function: functionName, raw_function: nil, lineno: lineno, colno: nil, abs_path: path, instruction_addr: addr), at: 0)
+                } else {
+                    frames.insert(Frame(filename: nil, function: nil, raw_function: line, lineno: nil, colno: nil, abs_path: nil, instruction_addr: nil), at: 0)
+                }
+            case (false, false):
+                // found another header line
+                errorMessage.append(line)
+            case (false, true):
+                // if we find a non stacktrace line after a stacktrace, its a new error -> send current error to sentry and start a new error event
+                result.append((errorMessage.joined(separator: "\n"), Stacktrace(frames: frames)))
+                stacktraceFound = false
+                frames = [Frame]()
+                errorMessage = [line]
+            }
+        }
+
+        return result
+    }
+
     public func uploadStackTrace(path: String) throws {
         // read all lines from the error log
         let content = try String(contentsOfFile: path)
@@ -67,55 +111,20 @@ public struct Sentry {
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
 
-        let lines = content.split(separator: "\n")
-
-        var stacktraceFound = false
-        var frames = [Frame]()
-        var errorMessage = [String]()
-
-        for line in lines {
-            let l = line.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if l.isEmpty {
-                continue
-            }
-
-            switch (l.starts(with: "0x"), stacktraceFound) {
-            case (true, _):
-                // found a line of the stacktrace
-                stacktraceFound = true
-
-                if let posComma = l.firstIndex(of: ","), let posAt = l.range(of: " at /"), let posColon = l.lastIndex(of: ":") {
-                    let addr = String(l[l.startIndex ..< posComma])
-                    let functionName = String(l[l.index(posComma, offsetBy: 2) ..< posAt.lowerBound])
-                    let path = String(l[posAt.upperBound ..< posColon])
-                    let lineno = Int(l[l.index(posColon, offsetBy: 1) ..< l.endIndex])
-
-                    frames.insert(Frame(filename: nil, function: functionName, raw_function: nil, lineno: lineno, colno: nil, abs_path: path, instruction_addr: addr), at: 0)
-                } else {
-                    frames.insert(Frame(filename: nil, function: nil, raw_function: l, lineno: nil, colno: nil, abs_path: nil, instruction_addr: nil), at: 0)
-                }
-            case (false, false):
-                // found another header line
-                errorMessage.append(l)
-            case (false, true):
-                // if we find a non stacktrace line after a stacktrace, its a new error -> send current error to sentry and start a new error event
-                let event = Event(
+        for exception in parseStacktrace(lines: content.split(separator: "\n")) {
+            sendEvent(
+                event: Event(
                     event_id: Event.generateEventId(),
                     timestamp: Date().timeIntervalSince1970,
                     level: .fatal,
                     server_name: servername,
                     release: release,
                     environment: environment,
-                    exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: errorMessage.joined(separator: "\n"), stacktrace: Stacktrace(frames: frames))]),
+                    exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: exception.msg, stacktrace: exception.stacktace)]),
                     breadcrumbs: nil,
                     user: nil
                 )
-                sendEvent(event: event)
-                stacktraceFound = false
-                frames = [Frame]()
-                errorMessage = [l]
-            }
+            )
         }
     }
 
