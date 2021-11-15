@@ -122,7 +122,7 @@ struct Dsn {
     }
 
     public func getAuthHeader() -> String {
-        "Sentry sentry_version=7, sentry_key=\(publicKey), sentry_client=SentrySwift/0.1.0, sentry_timestamp=\(Date().timeIntervalSince1970)"
+        "Sentry sentry_version=7, sentry_key=\(publicKey), sentry_client=\(Sentry.VERSION), sentry_timestamp=\(Date().timeIntervalSince1970)"
     }
 
     /// @see https://www.php.net/manual/en/language.oop5.magic.php#object.tostring
