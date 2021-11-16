@@ -26,6 +26,9 @@ struct Event: Encodable {
     /// The record severity. Defaults to `error`.
     let level: Level?
 
+    /// The name of the logger which created the record.
+    let logger: String?
+
     /// Server or device name the event was generated on.
     /// This is supposed to be a hostname.
     let server_name: String?

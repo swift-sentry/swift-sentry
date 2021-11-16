@@ -38,20 +38,23 @@ public struct SentryLogHandler: LogHandler {
         function: String,
         line: UInt
     ) {
-        var tags = [String: String].init(dictionaryLiteral: ("logger", label))
+        let tags: [String: String]?
 
         let metadataEscaped = (metadata ?? [:]).merging(self.metadata, uniquingKeysWith: { (a, _) in a })
 
         if !metadataEscaped.isEmpty {
-            tags = metadataEscaped.reduce(into: tags, {
+            tags = metadataEscaped.reduce(into: [String: String](), {
                 $0[$1.key] = "\($1.value)"
             })
+        } else {
+            tags = nil
         }
 
         let event = Event(
             event_id: Event.generateEventId(),
             timestamp: Date().timeIntervalSince1970,
             level: Level.init(from: level),
+            logger: label,
             server_name: sentry.servername,
             release: sentry.release,
             tags: tags,
