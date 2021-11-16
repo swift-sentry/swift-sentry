@@ -38,18 +38,16 @@ public struct SentryLogHandler: LogHandler {
         function: String,
         line: UInt
     ) {
-        let breadcrumbs: Breadcrumbs?
+        let tags: [String: String]?
 
         let metadataEscaped = (metadata ?? [:]).merging(self.metadata, uniquingKeysWith: { (a, _) in a })
 
         if !metadataEscaped.isEmpty {
-            breadcrumbs = Breadcrumbs(
-                values: metadataEscaped
-                    .sorted(by: { $0.0 < $1.0 })
-                    .map({ Breadcrumb(message: "\($0.description): \($1)", level: nil, timestamp: nil) })
-            )
+            tags = metadataEscaped.reduce(into: [String: String](), {
+                $0[$1.key] = "\($1.value)"
+            })
         } else {
-            breadcrumbs = nil
+            tags = nil
         }
 
         let event = Event(
@@ -58,6 +56,7 @@ public struct SentryLogHandler: LogHandler {
             level: Level.init(from: level),
             server_name: sentry.servername,
             release: sentry.release,
+            tags: tags,
             environment: sentry.environment,
             exception: Exceptions(
                 values: [
@@ -80,7 +79,7 @@ public struct SentryLogHandler: LogHandler {
                     )
                 ]
             ),
-            breadcrumbs: breadcrumbs,
+            breadcrumbs: nil,
             user: nil
         )
 

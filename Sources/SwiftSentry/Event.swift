@@ -33,6 +33,9 @@ struct Event: Encodable {
     /// The release version of the application.
     let release: String?
 
+    /// Optional. A map or list of tags for this event. Each tag must be less than 200 characters.
+    let tags: [String: String]?
+
     /// The environment name, such as `production` or `staging`.
     let environment: String?
 
