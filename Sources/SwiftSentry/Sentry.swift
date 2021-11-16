@@ -84,12 +84,12 @@ public struct Sentry {
                 if let posComma = line.firstIndex(of: ","), let posAt = line.range(of: " at /"), let posColon = line.lastIndex(of: ":") {
                     let addr = String(line[line.startIndex ..< posComma])
                     let functionName = String(line[line.index(posComma, offsetBy: 2) ..< posAt.lowerBound])
-                    let path = String(line[posAt.upperBound ..< posColon])
+                    let path = String(line[line.index(before: posAt.upperBound) ..< posColon])
                     let lineno = Int(line[line.index(posColon, offsetBy: 1) ..< line.endIndex])
 
                     frames.insert(Frame(filename: nil, function: functionName, raw_function: nil, lineno: lineno, colno: nil, abs_path: path, instruction_addr: addr), at: 0)
                 } else {
-                    frames.insert(Frame(filename: nil, function: nil, raw_function: line, lineno: nil, colno: nil, abs_path: nil, instruction_addr: nil), at: 0)
+                    frames.insert(Frame(filename: nil, function: nil, raw_function: nil, lineno: nil, colno: nil, abs_path: nil, instruction_addr: line), at: 0)
                 }
             case (false, false):
                 // found another header line
@@ -101,6 +101,10 @@ public struct Sentry {
                 frames = [Frame]()
                 errorMessage = [line]
             }
+        }
+
+        if !frames.isEmpty || !errorMessage.isEmpty {
+            result.append((errorMessage.joined(separator: "\n"), Stacktrace(frames: frames)))
         }
 
         return result

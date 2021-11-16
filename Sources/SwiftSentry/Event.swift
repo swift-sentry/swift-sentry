@@ -96,12 +96,12 @@ struct ExceptionDataBag: Encodable {
     let stacktrace: Stacktrace?
 }
 
-struct Stacktrace: Encodable {
+struct Stacktrace: Encodable, Equatable {
     /// A non-empty list of stack frames. The list is ordered from caller to callee, or oldest to youngest. The last frame is the one creating the exception.
     let frames: [Frame]
 }
 
-struct Frame: Encodable {
+struct Frame: Encodable, Equatable {
     /// The source file name (basename only).
     let filename: String?
 
