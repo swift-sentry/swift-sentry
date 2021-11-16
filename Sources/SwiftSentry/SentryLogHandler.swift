@@ -8,11 +8,14 @@
 import Foundation
 import Logging
 
-public struct SentryLogHandler: LogHandler {
+public class SentryLogHandler: LogHandler {
     private let label: String
     private let sentry: Sentry
     public var metadata = Logger.Metadata()
     public var logLevel: Logger.Level
+    private let sendLevel: Logger.Level
+    private var lastBreadcrumps = [Breadcrumb]()
+    private let breadcrumpCount: Int
 
     public subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
         get {
@@ -23,10 +26,12 @@ public struct SentryLogHandler: LogHandler {
         }
     }
 
-    public init(label: String, sentry: Sentry, level: Logger.Level) {
+    public init(label: String, sentry: Sentry, breadcrumpLevel: Logger.Level, sendLevel: Logger.Level, breadcrumpCount: Int = 20) {
         self.label = label
         self.sentry = sentry
-        self.logLevel = level
+        self.logLevel = breadcrumpLevel
+        self.sendLevel = sendLevel
+        self.breadcrumpCount = breadcrumpCount
     }
 
     public func log(
@@ -38,52 +43,59 @@ public struct SentryLogHandler: LogHandler {
         function: String,
         line: UInt
     ) {
-        let tags: [String: String]?
-
-        let metadataEscaped = (metadata ?? [:]).merging(self.metadata, uniquingKeysWith: { (a, _) in a })
-
-        if !metadataEscaped.isEmpty {
-            tags = metadataEscaped.reduce(into: [String: String](), {
-                $0[$1.key] = "\($1.value)"
-            })
+        if level < sendLevel {
+            self.lastBreadcrumps.append(Breadcrumb(message: message.description, level: Level(from: level), timestamp: Date().timeIntervalSince1970))
+            if self.lastBreadcrumps.count > breadcrumpCount {
+                self.lastBreadcrumps.removeFirst()
+            }
         } else {
-            tags = nil
-        }
+            let tags: [String: String]?
 
-        let event = Event(
-            event_id: Event.generateEventId(),
-            timestamp: Date().timeIntervalSince1970,
-            level: Level.init(from: level),
-            logger: label,
-            server_name: sentry.servername,
-            release: sentry.release,
-            tags: tags,
-            environment: sentry.environment,
-            exception: Exceptions(
-                values: [
-                    ExceptionDataBag(
-                        type: nil,
-                        value: message.description,
-                        stacktrace: Stacktrace(
-                            frames: [
-                                Frame(
-                                    filename: nil,
-                                    function: function,
-                                    raw_function: nil,
-                                    lineno: Int(line),
-                                    colno: nil,
-                                    abs_path: file,
-                                    instruction_addr: nil
-                                )
-                            ]
+            let metadataEscaped = (metadata ?? [:]).merging(self.metadata, uniquingKeysWith: { (a, _) in a })
+
+            if !metadataEscaped.isEmpty {
+                tags = metadataEscaped.reduce(into: [String: String](), {
+                    $0[$1.key] = "\($1.value)"
+                })
+            } else {
+                tags = nil
+            }
+
+            let event = Event(
+                event_id: Event.generateEventId(),
+                timestamp: Date().timeIntervalSince1970,
+                level: Level.init(from: level),
+                logger: label,
+                server_name: sentry.servername,
+                release: sentry.release,
+                tags: tags,
+                environment: sentry.environment,
+                exception: Exceptions(
+                    values: [
+                        ExceptionDataBag(
+                            type: nil,
+                            value: message.description,
+                            stacktrace: Stacktrace(
+                                frames: [
+                                    Frame(
+                                        filename: nil,
+                                        function: function,
+                                        raw_function: nil,
+                                        lineno: Int(line),
+                                        colno: nil,
+                                        abs_path: file,
+                                        instruction_addr: nil
+                                    )
+                                ]
+                            )
                         )
-                    )
-                ]
-            ),
-            breadcrumbs: nil,
-            user: nil
-        )
+                    ]
+                ),
+                breadcrumbs: self.lastBreadcrumps.isEmpty ? nil : Breadcrumbs(values: self.lastBreadcrumps),
+                user: nil
+            )
 
-        sentry.sendEvent(event: event)
+            sentry.sendEvent(event: event)
+        }
     }
 }
