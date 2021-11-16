@@ -62,8 +62,8 @@ public struct Sentry {
         sendEvent(event: event)
     }
 
-    private func parseStacktrace(lines: [Substring]) -> [(msg: String, stacktace: Stacktrace)] {
-        var result = [(msg: String, stacktace: Stacktrace)]()
+    internal static func parseStacktrace(lines: [Substring]) -> [(msg: String, stacktrace: Stacktrace)] {
+        var result = [(msg: String, stacktrace: Stacktrace)]()
 
         var stacktraceFound = false
         var frames = [Frame]()
@@ -113,7 +113,7 @@ public struct Sentry {
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
 
-        for exception in parseStacktrace(lines: content.split(separator: "\n")) {
+        for exception in Sentry.parseStacktrace(lines: content.split(separator: "\n")) {
             sendEvent(
                 event: Event(
                     event_id: Event.generateEventId(),
@@ -124,7 +124,7 @@ public struct Sentry {
                     release: release,
                     tags: nil,
                     environment: environment,
-                    exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: exception.msg, stacktrace: exception.stacktace)]),
+                    exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: exception.msg, stacktrace: exception.stacktrace)]),
                     breadcrumbs: nil,
                     user: nil
                 )
