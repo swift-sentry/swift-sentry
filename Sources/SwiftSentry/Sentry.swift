@@ -53,7 +53,7 @@ public struct Sentry {
             release: nil,
             environment: self.environment,
             exception: exceptions,
-            breadcrumbs: Breadcrumbs(values: SentryLoggingProxy.last),
+            breadcrumbs: nil,
             user: nil
         )
 
