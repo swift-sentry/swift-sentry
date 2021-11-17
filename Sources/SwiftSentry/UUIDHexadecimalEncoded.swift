@@ -9,9 +9,11 @@ import Foundation
 import NIO
 
 @propertyWrapper
-struct UUIDHexadecimalEncoded: Codable {
+struct UUIDHexadecimalEncoded {
     let wrappedValue: UUID
+}
 
+extension UUIDHexadecimalEncoded: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         guard let id = UUID(fromHexadecimalEncodedString: try container.decode(String.self)) else {
