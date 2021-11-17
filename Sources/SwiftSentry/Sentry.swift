@@ -44,7 +44,7 @@ public struct Sentry {
     }
 
     @discardableResult
-    public func captureError(error: Error) -> EventLoopFuture<String> {
+    public func captureError(error: Error, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let edb = ExceptionDataBag(
             type: "\(error.self)",
             value: error.localizedDescription,
@@ -67,7 +67,7 @@ public struct Sentry {
             user: nil
         )
 
-        return sendEvent(event: event)
+        return sendEvent(event: event, eventLoop: eventLoop)
     }
 
     internal static func parseStacktrace(lines: [Substring]) -> [(msg: String, stacktrace: Stacktrace)] {
@@ -119,14 +119,16 @@ public struct Sentry {
     }
 
     @discardableResult
-    public func uploadStackTrace(path: String) throws -> [EventLoopFuture<String>] {
+    public func uploadStackTrace(path: String, eventLoop: EventLoop? = nil) throws -> EventLoopFuture<[UUID]> {
+        let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
+        
         // read all lines from the error log
         let content = try String(contentsOfFile: path)
 
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
-
-        return Sentry.parseStacktrace(lines: content.split(separator: "\n")).map({ exception in
+        
+        return EventLoopFuture.whenAllSucceed(Sentry.parseStacktrace(lines: content.split(separator: "\n")).map({ exception in
             sendEvent(
                 event: Event(
                     event_id: UUID(),
@@ -140,19 +142,22 @@ public struct Sentry {
                     exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: exception.msg, stacktrace: exception.stacktrace)]),
                     breadcrumbs: nil,
                     user: nil
-                )
+                ),
+                eventLoop: eventLoop
             )
-        })
+        }), on: eventLoop)
     }
 
     @discardableResult
-    internal func sendEvent(event: Event) -> EventLoopFuture<String> {
+    internal func sendEvent(event: Event, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
+        let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
+        
         guard let data = try? JSONEncoder().encode(event) else {
-            return httpClient.eventLoopGroup.next().makeFailedFuture(SwiftSentryError.CantEncodeEvent)
+            return eventLoop.makeFailedFuture(SwiftSentryError.CantEncodeEvent)
         }
 
         guard var request = try? HTTPClient.Request(url: dns.getStoreApiEndpointUrl(), method: .POST) else {
-            return httpClient.eventLoopGroup.next().makeFailedFuture(SwiftSentryError.CantCreateRequest)
+            return eventLoop.makeFailedFuture(SwiftSentryError.CantCreateRequest)
         }
 
         request.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
@@ -160,12 +165,11 @@ public struct Sentry {
         request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dns.getAuthHeader())
         request.body = HTTPClient.Body.data(data)
 
-        return httpClient.execute(request: request).flatMap({ resp -> EventLoopFuture<String> in
-            guard var body = resp.body, let text = body.readString(length: body.readableBytes /* , encoding: String.Encoding.utf8 */ ) else {
-                return httpClient.eventLoopGroup.next().makeFailedFuture(SwiftSentryError.NoResponseBody(status: resp.status.code))
+        return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing({ resp -> UUID in
+            guard var body = resp.body, let id = body.getUUIDHexadecimalEncoded() else {
+                throw SwiftSentryError.NoResponseBody(status: resp.status.code)
             }
-
-            return httpClient.eventLoopGroup.next().makeSucceededFuture(text)
+            return id
         })
     }
 }

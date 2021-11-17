@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import NIO
 
 @propertyWrapper
 struct UUIDHexadecimalEncoded {
@@ -42,3 +43,13 @@ extension UUID {
         self.init(uuidString: a)
     }
 }
+
+extension ByteBuffer {
+    mutating func getUUIDHexadecimalEncoded() -> UUID? {
+        guard let string = readString(length: readableBytes) else {
+            return nil
+        }
+        return UUID(fromHexadecimalEncodedString: string)
+    }
+}
+
