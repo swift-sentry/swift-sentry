@@ -51,7 +51,7 @@ public struct SentryLogHandler: LogHandler {
         }
 
         let event = Event(
-            event_id: Event.generateEventId(),
+            event_id: UUID(),
             timestamp: Date().timeIntervalSince1970,
             level: Level.init(from: level),
             logger: label,

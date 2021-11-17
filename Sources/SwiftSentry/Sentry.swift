@@ -54,7 +54,7 @@ public struct Sentry {
         let exceptions = Exceptions(values: [edb])
 
         let event = Event(
-            event_id: Event.generateEventId(),
+            event_id: UUID(),
             timestamp: Date().timeIntervalSince1970,
             level: .error,
             logger: nil,
@@ -129,7 +129,7 @@ public struct Sentry {
         return Sentry.parseStacktrace(lines: content.split(separator: "\n")).map({ exception in
             sendEvent(
                 event: Event(
-                    event_id: Event.generateEventId(),
+                    event_id: UUID(),
                     timestamp: Date().timeIntervalSince1970,
                     level: .fatal,
                     logger: nil,

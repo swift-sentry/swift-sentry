@@ -14,7 +14,8 @@ struct Event: Encodable {
     /// Hexadecimal string representing a uuid4 value. The length is exactly 32 characters. Dashes are not allowed. Has to be lowercase.
     /// Even though this field is backfilled on the server with a new uuid4, it is strongly recommended to generate that uuid4 clientside.
     /// There are some features like user feedback which are easier to implement that way, and debugging in case events get lost in your Sentry installation is also easier.
-    let event_id: String?
+    @UUIDHexadecimalEncoded
+    var event_id: UUID
 
     /// Indicates when the event was created in the Sentry SDK. The format is a numeric (integer or float) value representing the number of seconds that have elapsed since the Unix epoch.
     let timestamp: Double?
@@ -51,10 +52,6 @@ struct Event: Encodable {
 
     /// Information about the user who triggered this event.
     let user: User?
-
-    public static func generateEventId() -> String {
-        UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-    }
 }
 
 enum Level: String, Encodable {
