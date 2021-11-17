@@ -9,10 +9,6 @@ import Foundation
 
 /// This class represents a Sentry DSN that can be obtained from the Settings page of a project.
 struct Dsn {
-    enum DsnError: Error {
-        case InvalidArgumentException(_ msg: String)
-    }
-
     /// The protocol to be used to access the resource
     let scheme: String
 
@@ -64,40 +60,40 @@ struct Dsn {
      */
     init(fromString value: String) throws {
         guard let parsedDsn = URL(string: value) else {
-            throw DsnError.InvalidArgumentException("The \"\(value)\" DSN is invalid.")
+            throw Sentry.SwiftSentryError.InvalidArgumentException("The \"\(value)\" DSN is invalid.")
         }
 
         guard let scheme = parsedDsn.scheme, !scheme.isEmpty else {
-            throw DsnError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
+            throw Sentry.SwiftSentryError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
         }
 
         guard let host = parsedDsn.host, !host.isEmpty else {
-            throw DsnError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
+            throw Sentry.SwiftSentryError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
         }
 
         let path = parsedDsn.path
         guard !path.isEmpty else {
-            throw DsnError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
+            throw Sentry.SwiftSentryError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
         }
 
         guard let user = parsedDsn.user, !user.isEmpty else {
-            throw DsnError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
+            throw Sentry.SwiftSentryError.InvalidArgumentException("The \"\(value)\" DSN must contain a scheme, a host, a user and a path component.")
         }
 
         if let pass = parsedDsn.password {
             guard !pass.isEmpty else {
-                throw DsnError.InvalidArgumentException("The \"\(value)\" DSN must contain a valid secret key.")
+                throw Sentry.SwiftSentryError.InvalidArgumentException("The \"\(value)\" DSN must contain a valid secret key.")
             }
         }
 
         guard scheme == "http" || scheme == "https" else {
-            throw DsnError.InvalidArgumentException("The scheme of the \"\(value)\" DSN must be either \"http\" or \"https\".")
+            throw Sentry.SwiftSentryError.InvalidArgumentException("The scheme of the \"\(value)\" DSN must be either \"http\" or \"https\".")
         }
 
         var segmentPaths = path.split(separator: "/", omittingEmptySubsequences: true)
 
         guard let projectId = Int(segmentPaths.removeLast()), projectId >= 0 else {
-            throw DsnError.InvalidArgumentException("\"\(value)\" DSN must contain a valid project ID.")
+            throw Sentry.SwiftSentryError.InvalidArgumentException("\"\(value)\" DSN must contain a valid project ID.")
         }
 
         self.init(
@@ -157,4 +153,3 @@ struct Dsn {
         return url
     }
 }
-

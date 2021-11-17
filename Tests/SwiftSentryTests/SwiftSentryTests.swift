@@ -96,39 +96,4 @@ final class SwiftSentryTests: XCTestCase {
         XCTAssertEqual(a[1].stacktrace.frames[1], Frame(filename: nil, function: "func22", raw_function: nil, lineno: 2, colno: nil, abs_path: "/some/path2.swift", instruction_addr: "0xe894"))
         XCTAssertEqual(a[1].stacktrace.frames[0], Frame(filename: nil, function: "func32", raw_function: nil, lineno: 3, colno: nil, abs_path: "/some/path3.swift", instruction_addr: "0x0350"))
     }
-    
-    func testParseStacktraceasd() {
-        let dummyStacktrace2 = """
-        
-        """
-
-        let dummyStacktrace3 = """
-        0x00
-        0x00, func at /some/path.swift:3
-        """
-
-        let dummyStacktrace4 = """
-        0x00, func at /some/path.swift:3
-        0x00
-        """
-
-        let dummyStacktrace5 = """
-        Test
-        Test2
-        0x00
-        """
-
-        let dummyStacktrace6 = """
-        Test
-        0x00, func at /some/path.swift:3
-        Test
-        """
-
-        let dummyStacktrace7 = """
-        Tset
-        0x00
-        Test
-        0x00, func at /some/path.swift:3
-        """
-    }
 }
