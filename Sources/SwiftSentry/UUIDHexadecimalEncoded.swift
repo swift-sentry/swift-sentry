@@ -21,7 +21,7 @@ extension UUIDHexadecimalEncoded: Codable {
         }
         self.wrappedValue = id
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(self.wrappedValue.hexadecimalEncoded)
@@ -33,7 +33,7 @@ extension UUID {
     var hexadecimalEncoded: String {
         uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
-    
+
     init?(fromHexadecimalEncodedString string: String) {
         var a = string.uppercased()
         a.insert("-", at: a.index(a.startIndex, offsetBy: 20))
@@ -52,4 +52,3 @@ extension ByteBuffer {
         return UUID(fromHexadecimalEncodedString: string)
     }
 }
-

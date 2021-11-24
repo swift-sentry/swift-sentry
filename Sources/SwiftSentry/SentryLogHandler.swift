@@ -16,7 +16,7 @@ public struct SentryLogHandler: LogHandler {
 
     public subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
         get {
-            return self.metadata[metadataKey]
+            self.metadata[metadataKey]
         }
         set {
             self.metadata[metadataKey] = newValue
@@ -40,7 +40,7 @@ public struct SentryLogHandler: LogHandler {
     ) {
         let tags: [String: String]?
 
-        let metadataEscaped = (metadata ?? [:]).merging(self.metadata, uniquingKeysWith: { (a, _) in a })
+        let metadataEscaped = (metadata ?? [:]).merging(self.metadata, uniquingKeysWith: { a, _ in a })
 
         if !metadataEscaped.isEmpty {
             tags = metadataEscaped.reduce(into: [String: String](), {
@@ -53,7 +53,7 @@ public struct SentryLogHandler: LogHandler {
         let event = Event(
             event_id: UUID(),
             timestamp: Date().timeIntervalSince1970,
-            level: Level.init(from: level),
+            level: Level(from: level),
             logger: label,
             server_name: sentry.servername,
             release: sentry.release,

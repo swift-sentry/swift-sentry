@@ -28,7 +28,7 @@ public struct Sentry {
     public init(
         dns: String,
         httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .createNew),
-        servername: String? = Host.current().localizedName,
+        servername: String? = ProcessInfo.processInfo.hostName,
         release: String? = nil,
         environment: String? = nil
     ) throws {
@@ -59,7 +59,7 @@ public struct Sentry {
             level: .error,
             logger: nil,
             server_name: self.servername,
-            release: nil,
+            release: self.release,
             tags: nil,
             environment: self.environment,
             exception: exceptions,
@@ -121,13 +121,15 @@ public struct Sentry {
     @discardableResult
     public func uploadStackTrace(path: String, eventLoop: EventLoop? = nil) throws -> EventLoopFuture<[UUID]> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
-        
+
         // read all lines from the error log
-        let content = try String(contentsOfFile: path)
+        guard let content = try? String(contentsOfFile: path) else {
+            return eventLoop.makeSucceededFuture([UUID]())
+        }
 
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
-        
+
         return EventLoopFuture.whenAllSucceed(Sentry.parseStacktrace(lines: content.split(separator: "\n")).map({ exception in
             sendEvent(
                 event: Event(
@@ -151,7 +153,7 @@ public struct Sentry {
     @discardableResult
     internal func sendEvent(event: Event, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
-        
+
         guard let data = try? JSONEncoder().encode(event) else {
             return eventLoop.makeFailedFuture(SwiftSentryError.CantEncodeEvent)
         }
