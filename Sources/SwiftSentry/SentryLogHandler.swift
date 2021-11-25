@@ -61,27 +61,7 @@ public struct SentryLogHandler: LogHandler {
             tags: tags,
             environment: sentry.environment,
             message: .raw(message: message.description),
-            exception: Exceptions(
-                values: [
-                    ExceptionDataBag(
-                        type: nil,
-                        value: message.description,
-                        stacktrace: Stacktrace(
-                            frames: [
-                                Frame(
-                                    filename: nil,
-                                    function: function,
-                                    raw_function: nil,
-                                    lineno: Int(line),
-                                    colno: nil,
-                                    abs_path: file,
-                                    instruction_addr: nil
-                                )
-                            ]
-                        )
-                    )
-                ]
-            ),
+            exception: nil,
             breadcrumbs: nil,
             user: nil
         )

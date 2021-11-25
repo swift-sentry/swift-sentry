@@ -94,12 +94,12 @@ enum Message: Encodable {
     case format(message: String, params: [String])
 
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-
         switch self {
         case .raw(let message):
-            try container.encode(message, forKey: .message)
+            var container = encoder.singleValueContainer()
+            try container.encode(message)
         case .format(let message, let params):
+            var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(message, forKey: .message)
             try container.encode(params, forKey: .params)
         }
