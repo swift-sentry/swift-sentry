@@ -55,10 +55,12 @@ public struct SentryLogHandler: LogHandler {
             timestamp: Date().timeIntervalSince1970,
             level: Level(from: level),
             logger: label,
+            transaction: metadataEscaped["transaction"]?.description,
             server_name: sentry.servername,
             release: sentry.release,
             tags: tags,
             environment: sentry.environment,
+            message: .raw(message: message.description),
             exception: Exceptions(
                 values: [
                     ExceptionDataBag(
