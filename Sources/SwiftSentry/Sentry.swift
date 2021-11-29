@@ -19,20 +19,20 @@ public struct Sentry {
 
     internal static let VERSION = "SentrySwift/0.1.0"
 
-    private let dns: Dsn
+    private let dsn: Dsn
     private var httpClient: HTTPClient
     internal var servername: String?
     internal var release: String?
     internal var environment: String?
 
     public init(
-        dns: String,
+        dsn: String,
         httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .createNew),
         servername: String? = ProcessInfo.processInfo.hostName,
         release: String? = nil,
         environment: String? = nil
     ) throws {
-        self.dns = try Dsn(fromString: dns)
+        self.dsn = try Dsn(fromString: dsn)
         self.httpClient = httpClient
         self.servername = servername
         self.release = release
@@ -162,13 +162,13 @@ public struct Sentry {
             return eventLoop.makeFailedFuture(SwiftSentryError.CantEncodeEvent)
         }
 
-        guard var request = try? HTTPClient.Request(url: dns.getStoreApiEndpointUrl(), method: .POST) else {
+        guard var request = try? HTTPClient.Request(url: dsn.getStoreApiEndpointUrl(), method: .POST) else {
             return eventLoop.makeFailedFuture(SwiftSentryError.CantCreateRequest)
         }
 
         request.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
         request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
-        request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dns.getAuthHeader())
+        request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dsn.getAuthHeader())
         request.body = HTTPClient.Body.data(data)
 
         return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing({ resp -> UUID in
