@@ -4,17 +4,15 @@
 
 Log messages from Swift to Sentry following [SwiftLog](https://github.com/apple/swift-log).
 
-WARNING: Under development!
-
 ## Usage
 1. Add `SwiftSentry` as a dependency to your `Package.swift`
 
 ```swift
   dependencies: [
-    .package(url: "https://github.com/swift-sentry/swift-sentry.git", from: "1.0.0")
+    .package(name: "SwiftSentry", url: "https://github.com/swift-sentry/swift-sentry.git", from: "1.0.0")
   ],
   targets: [
-    .target(name: "MyApp", dependencies: [.product(name: "SwiftSentry", package: "swift-sentry")])
+    .target(name: "MyApp", dependencies: ["SwiftSentry"])
   ]
 ```
 
@@ -24,7 +22,7 @@ WARNING: Under development!
 import Logging
 import SwiftSentry
 
-let sentry = SwiftSentry(dsn: "https://bdff91e76.....@o4885.....ingest.sentry.io/5609....")
+let sentry = Sentry(dsn: "<Your Sentry DSN String>")
 
 // Add sentry to logger and set the minimum log level to `.error`
 LoggingSystem.bootstrap { label in
@@ -33,17 +31,28 @@ LoggingSystem.bootstrap { label in
         StreamLogHandler.standardOutput(label: label)
     ])
 }
+```
 
-// The default minimum log level can also be set
-SentryLogHandler.defaultLogLevel = .error
+If your application already uses a `EventLoopGroup` it is recommended to share it with SwiftSentry:
+
+```swift
+let sentry = try Sentry(
+  dsn: "<Your Sentry DSN String>",
+  httpClient: HTTPClient(eventLoopGroupProvider: .shared(eventLoopGroup))
+)
 ```
 
 3. Send logs
 
 ```swift
-let logger = Logger(label: "com.example.MyApp.main")
-
+var logger = Logger(label: "com.example.MyApp.main")
 logger.critical("Something went wrong!")
+```
+
+The metadata of the logger will be sent as tags to sentry.
+
+```swift
+logger[metadataKey: "note"] = Logger.MetadataValue(stringLiteral: "some usefull information")
 ```
 
 ## Upload crash reports
@@ -56,11 +65,11 @@ Stack traces are uploaded at each start of your "API service". If your applicati
 ```swift
 import SwiftSentry
 
-let sentry = SwiftSentry(dsn: "https://bdff91e76.....@o4885.....ingest.sentry.io/5609....")
+let sentry = Sentry(dsn: "<Your Sentry DSN String>")
 
 // Upload stack trace from a log file
 // WARNING: the error file will be truncated afterwards
-sentry.uploadStackTrace(path: "/var/log/supervisor/hello-stderr.log")
+_ = try? sentry.uploadStackTrace(path: "/var/log/supervisor/hello-stderr.log")
 ```
 
 
