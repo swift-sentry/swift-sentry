@@ -1,10 +1,3 @@
-//
-//  Sentry.swift
-//  SwiftSentry
-//
-//  Created by AZm87 on 24.06.21.
-//
-
 import Foundation
 import AsyncHTTPClient
 import NIO

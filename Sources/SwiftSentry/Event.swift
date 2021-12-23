@@ -1,10 +1,3 @@
-//
-//  Event.swift
-//  SwiftSentry
-//
-//  Created by AZm87 on 14.07.21.
-//
-
 import Foundation
 import Logging
 

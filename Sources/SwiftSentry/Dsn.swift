@@ -1,10 +1,3 @@
-//
-//  Dsn.swift
-//  SwiftSentry
-//
-//  Created by AZm87 on 24.06.21.
-//
-
 import Foundation
 
 /// This class represents a Sentry DSN that can be obtained from the Settings page of a project.

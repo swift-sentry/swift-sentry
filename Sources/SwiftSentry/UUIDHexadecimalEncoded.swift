@@ -1,10 +1,3 @@
-//
-//  UUIDHexadecimalEncoded.swift
-//  
-//
-//  Created by Patrick Zippenfenig on 17.11.21.
-//
-
 import Foundation
 import NIO
 

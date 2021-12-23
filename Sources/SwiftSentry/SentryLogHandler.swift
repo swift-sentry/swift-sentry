@@ -1,10 +1,3 @@
-//
-//  SentryLogHandler.swift
-//  SwiftSentry
-//
-//  Created by AZm87 on 15.11.21.
-//
-
 import Foundation
 import Logging
 
