@@ -72,54 +72,6 @@ public struct Sentry {
         return sendEvent(event: event, eventLoop: eventLoop)
     }
 
-    internal static func parseStacktrace(lines: [Substring]) -> [(msg: String, stacktrace: Stacktrace)] {
-        var result = [(msg: String, stacktrace: Stacktrace)]()
-
-        var stacktraceFound = false
-        var frames = [Frame]()
-        var errorMessage = [String]()
-
-        for l in lines {
-            let line = l.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if line.isEmpty {
-                continue
-            }
-
-            switch (line.starts(with: "0x"), stacktraceFound) {
-            case (true, _):
-                // found a line of the stacktrace
-                stacktraceFound = true
-
-                if let posComma = line.firstIndex(of: ","), let posAt = line.range(of: " at /"), let posColon = line.lastIndex(of: ":") {
-                    let addr = String(line[line.startIndex ..< posComma])
-                    let functionName = String(line[line.index(posComma, offsetBy: 2) ..< posAt.lowerBound])
-                    let path = String(line[line.index(before: posAt.upperBound) ..< posColon])
-                    let lineno = Int(line[line.index(posColon, offsetBy: 1) ..< line.endIndex])
-
-                    frames.insert(Frame(filename: nil, function: functionName, raw_function: nil, lineno: lineno, colno: nil, abs_path: path, instruction_addr: addr), at: 0)
-                } else {
-                    frames.insert(Frame(filename: nil, function: nil, raw_function: nil, lineno: nil, colno: nil, abs_path: nil, instruction_addr: line), at: 0)
-                }
-            case (false, false):
-                // found another header line
-                errorMessage.append(line)
-            case (false, true):
-                // if we find a non stacktrace line after a stacktrace, its a new error -> send current error to sentry and start a new error event
-                result.append((errorMessage.joined(separator: "\n"), Stacktrace(frames: frames)))
-                stacktraceFound = false
-                frames = [Frame]()
-                errorMessage = [line]
-            }
-        }
-
-        if !frames.isEmpty || !errorMessage.isEmpty {
-            result.append((errorMessage.joined(separator: "\n"), Stacktrace(frames: frames)))
-        }
-
-        return result
-    }
-
     @discardableResult
     public func uploadStackTrace(path: String, eventLoop: EventLoop? = nil) throws -> EventLoopFuture<[UUID]> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
@@ -131,27 +83,12 @@ public struct Sentry {
 
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
+        
+        let events = SentryFatalError.parseStacktrace(content).map {
+            $0.getEvent(servername: servername, release: release, environment: environment)
+        }
 
-        return EventLoopFuture.whenAllSucceed(Sentry.parseStacktrace(lines: content.split(separator: "\n")).map({ exception in
-            sendEvent(
-                event: Event(
-                    event_id: UUID(),
-                    timestamp: Date().timeIntervalSince1970,
-                    level: .fatal,
-                    logger: nil,
-                    transaction: nil,
-                    server_name: servername,
-                    release: release,
-                    tags: nil,
-                    environment: environment,
-                    message: .raw(message: exception.msg),
-                    exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: exception.msg, stacktrace: exception.stacktrace)]),
-                    breadcrumbs: nil,
-                    user: nil
-                ),
-                eventLoop: eventLoop
-            )
-        }), on: eventLoop)
+        return EventLoopFuture.whenAllSucceed(events.map ({ sendEvent(event: $0) }), on: eventLoop)
     }
 
     @discardableResult
