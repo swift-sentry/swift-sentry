@@ -57,7 +57,7 @@ public struct Sentry {
     }
 
     @discardableResult
-    public func captureError(error: Error, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
+    public func capture(error: Error, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let edb = ExceptionDataBag(
             type: "\(error.self)",
             value: error.localizedDescription,
@@ -82,7 +82,44 @@ public struct Sentry {
             user: nil
         )
 
-        return sendEvent(event: event, eventLoop: eventLoop)
+        return send(event: event, eventLoop: eventLoop)
+    }
+    
+    /// Log a message to sentry
+    @discardableResult
+    public func capture(
+        message: String,
+        level: Level,
+        logger: String? = nil,
+        transaction: String? = nil,
+        tags: [String: String]? = nil,
+        file: String? = #file,
+        filePath: String? = #filePath,
+        function: String? = #function,
+        line: Int? = #line,
+        column: Int? = #column,
+        eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
+        
+        let frame = Frame(filename: file, function: function, raw_function: nil, lineno: line, colno: column, abs_path: filePath, instruction_addr: nil)
+        let stacktrace = Stacktrace(frames: [frame])
+
+        let event = Event(
+            event_id: UUID(),
+            timestamp: Date().timeIntervalSince1970,
+            level: level,
+            logger: logger,
+            transaction: transaction,
+            server_name: servername,
+            release: release,
+            tags: tags,
+            environment: environment,
+            message: .raw(message: message),
+            exception: Exceptions(values: [ExceptionDataBag(type: level.rawValue, value: nil, stacktrace: stacktrace)]),
+            breadcrumbs: nil,
+            user: nil
+        )
+
+        return send(event: event)
     }
 
     @discardableResult
@@ -97,15 +134,15 @@ public struct Sentry {
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
         
-        let events = SentryFatalError.parseStacktrace(content).map {
+        let events = FatalError.parseStacktrace(content).map {
             $0.getEvent(servername: servername, release: release, environment: environment)
         }
 
-        return EventLoopFuture.whenAllSucceed(events.map ({ sendEvent(event: $0) }), on: eventLoop)
+        return EventLoopFuture.whenAllSucceed(events.map ({ send(event: $0) }), on: eventLoop)
     }
 
     @discardableResult
-    internal func sendEvent(event: Event, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
+    internal func send(event: Event, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
 
         do {

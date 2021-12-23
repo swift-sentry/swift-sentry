@@ -61,7 +61,7 @@ struct Event: Encodable {
     let user: User?
 }
 
-enum Level: String, Encodable {
+public enum Level: String, Encodable {
     case fatal
     case error
     case warning

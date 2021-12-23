@@ -38,34 +38,20 @@ public struct SentryLogHandler: LogHandler {
         function: String,
         line: UInt
     ) {
-        let tags: [String: String]?
-
-        let metadataEscaped = (metadata ?? [:]).merging(self.metadata, uniquingKeysWith: { a, _ in a })
-
-        if !metadataEscaped.isEmpty {
-            tags = metadataEscaped.reduce(into: [String: String](), {
-                $0[$1.key] = "\($1.value)"
-            })
-        } else {
-            tags = nil
-        }
-
-        let event = Event(
-            event_id: UUID(),
-            timestamp: Date().timeIntervalSince1970,
+        let metadataEscaped = metadata.map ({ $0.merging(self.metadata, uniquingKeysWith: { a, _ in a } )}) ?? self.metadata
+        let tags = metadataEscaped.mapValues({ "\($0)" })
+        
+        sentry.capture(
+            message: message.description,
             level: Level(from: level),
-            logger: label,
+            logger: source,
             transaction: metadataEscaped["transaction"]?.description,
-            server_name: sentry.servername,
-            release: sentry.release,
-            tags: tags,
-            environment: sentry.environment,
-            message: .raw(message: message.description),
-            exception: nil,
-            breadcrumbs: nil,
-            user: nil
+            tags: tags.isEmpty ? nil : tags,
+            file: file,
+            filePath: nil,
+            function: function,
+            line: Int(line),
+            column: nil
         )
-
-        sentry.sendEvent(event: event)
     }
 }

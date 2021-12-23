@@ -17,13 +17,13 @@ final class FatalErrorTests: XCTestCase {
          \t  \t
         """
 
-        XCTAssertEqual(SentryFatalError.parseStacktrace(dummyStacktrace1).count, 0)
-        XCTAssertEqual(SentryFatalError.parseStacktrace(dummyStacktrace2).count, 0)
-        XCTAssertEqual(SentryFatalError.parseStacktrace(dummyStacktrace3).count, 0)
-        XCTAssertEqual(SentryFatalError.parseStacktrace(dummyStacktrace4).count, 0)
-        XCTAssertEqual(SentryFatalError.parseStacktrace(dummyStacktrace5).count, 0)
-        XCTAssertEqual(SentryFatalError.parseStacktrace(dummyStacktrace6).count, 0)
-        XCTAssertEqual(SentryFatalError.parseStacktrace(dummyStacktrace7).count, 0)
+        XCTAssertEqual(FatalError.parseStacktrace(dummyStacktrace1).count, 0)
+        XCTAssertEqual(FatalError.parseStacktrace(dummyStacktrace2).count, 0)
+        XCTAssertEqual(FatalError.parseStacktrace(dummyStacktrace3).count, 0)
+        XCTAssertEqual(FatalError.parseStacktrace(dummyStacktrace4).count, 0)
+        XCTAssertEqual(FatalError.parseStacktrace(dummyStacktrace5).count, 0)
+        XCTAssertEqual(FatalError.parseStacktrace(dummyStacktrace6).count, 0)
+        XCTAssertEqual(FatalError.parseStacktrace(dummyStacktrace7).count, 0)
     }
 
     func testParseStacktraceOnlyHeader() throws {
@@ -31,9 +31,9 @@ final class FatalErrorTests: XCTestCase {
         let dummyStacktrace2 = "fatalError\nSomething happend"
         let dummyStacktrace3 = "fatalError\t\nSomething happend\t\n\t"
 
-        let stacktrace1 = SentryFatalError.parseStacktrace(dummyStacktrace1)
-        let stacktrace2 = SentryFatalError.parseStacktrace(dummyStacktrace2)
-        let stacktrace3 = SentryFatalError.parseStacktrace(dummyStacktrace3)
+        let stacktrace1 = FatalError.parseStacktrace(dummyStacktrace1)
+        let stacktrace2 = FatalError.parseStacktrace(dummyStacktrace2)
+        let stacktrace3 = FatalError.parseStacktrace(dummyStacktrace3)
 
         XCTAssertEqual(stacktrace1.count, 1)
         XCTAssertEqual(stacktrace2.count, 1)
@@ -56,7 +56,7 @@ final class FatalErrorTests: XCTestCase {
         0x0000
         """
 
-        let a = SentryFatalError.parseStacktrace(dummyStacktrace)
+        let a = FatalError.parseStacktrace(dummyStacktrace)
         XCTAssertEqual(a.count, 1)
         XCTAssertEqual(a[0].message, "")
         XCTAssertEqual(a[0].stacktrace.frames.count, 4)
@@ -81,7 +81,7 @@ final class FatalErrorTests: XCTestCase {
         0x0350, func32 at /some/path3.swift:3
         """
 
-        let a = SentryFatalError.parseStacktrace(dummyStacktrace)
+        let a = FatalError.parseStacktrace(dummyStacktrace)
         XCTAssertEqual(a.count, 2)
         XCTAssertEqual(a[0].message, "fatalError 1\nSomething happend")
         XCTAssertEqual(a[0].stacktrace.frames.count, 4)

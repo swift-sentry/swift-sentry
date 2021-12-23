@@ -83,3 +83,6 @@ user=vapor
 stdout_logfile=/var/log/supervisor/%(program_name)-stdout.log
 stderr_logfile=/var/log/supervisor/%(program_name)-stderr.log
 ```
+
+# TODO
+- Capture stack traces for all logs (See [Vapor Stacktrace implementation](https://github.com/vapor/vapor/blob/73d57959a96ceca719558e70c320b2f729d2b25b/Sources/Vapor/Error/StackTrace.swift))

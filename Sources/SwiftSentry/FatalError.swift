@@ -1,15 +1,15 @@
 import Foundation
 
-struct SentryFatalError {
+struct FatalError {
     /// The error message that is produced from a fatal error
     let message: String
     
     let stacktrace: Stacktrace
     
     /// Parse an error log that contains multiple fatal errors with stacktraces from SwiftBacktrace
-    internal static func parseStacktrace(_ string: String) -> [SentryFatalError] {
+    internal static func parseStacktrace(_ string: String) -> [FatalError] {
         let lines = string.split(separator: "\n")
-        var result = [SentryFatalError]()
+        var result = [FatalError]()
 
         var stacktraceFound = false
         var frames = [Frame]()
@@ -44,7 +44,7 @@ struct SentryFatalError {
                 // if we find a non stacktrace line after a stacktrace, its a new error -> send current error to sentry and start a new error event
                 let message = errorMessage.joined(separator: "\n")
                 let stacktrace = Stacktrace(frames: frames)
-                let messageWithStacktrace = SentryFatalError(message: message, stacktrace: stacktrace)
+                let messageWithStacktrace = FatalError(message: message, stacktrace: stacktrace)
                 result.append(messageWithStacktrace)
                 stacktraceFound = false
                 frames = [Frame]()
@@ -55,19 +55,15 @@ struct SentryFatalError {
         if !frames.isEmpty || !errorMessage.isEmpty {
             let message = errorMessage.joined(separator: "\n")
             let stacktrace = Stacktrace(frames: frames)
-            let messageWithStacktrace = SentryFatalError(message: message, stacktrace: stacktrace)
+            let messageWithStacktrace = FatalError(message: message, stacktrace: stacktrace)
             result.append(messageWithStacktrace)
         }
 
         return result
     }
     
-    public func getExceptions() -> Exceptions {
-        return Exceptions(values: [ExceptionDataBag(type: "FatalError", value: message, stacktrace: stacktrace)])
-    }
-    
     /// Generate a `Event` object to upload to sentry
-    public func getEvent(servername: String?, release: String?, environment: String?) -> Event {
+    func getEvent(servername: String?, release: String?, environment: String?) -> Event {
         Event(
             event_id: UUID(),
             timestamp: Date().timeIntervalSince1970,
@@ -79,7 +75,7 @@ struct SentryFatalError {
             tags: nil,
             environment: environment,
             message: .raw(message: message),
-            exception: getExceptions(),
+            exception: Exceptions(values: [ExceptionDataBag(type: "FatalError", value: message, stacktrace: stacktrace)]),
             breadcrumbs: nil,
             user: nil
         )
