@@ -47,8 +47,11 @@ public struct Sentry {
     static public func getHostname() -> String {
         var data = [CChar](repeating: 0, count: 265)
         let string: String? = data.withUnsafeMutableBufferPointer({
-            gethostname($0.baseAddress, 256)
-            return String(cString: $0.baseAddress!, encoding: .utf8)
+            guard let ptr = $0.baseAddress else {
+                return nil
+            }
+            gethostname(ptr, 256)
+            return String(cString: ptr, encoding: .utf8)
         })
         return string ?? ""
     }
