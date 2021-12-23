@@ -11,8 +11,8 @@ import NIO
 
 public struct Sentry {
     enum SwiftSentryError: Error {
-        case CantEncodeEvent
-        case CantCreateRequest
+        //case CantEncodeEvent
+        //case CantCreateRequest
         case NoResponseBody(status: UInt)
         case InvalidArgumentException(_ msg: String)
     }
@@ -108,24 +108,23 @@ public struct Sentry {
     internal func sendEvent(event: Event, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
 
-        guard let data = try? JSONEncoder().encode(event) else {
-            return eventLoop.makeFailedFuture(SwiftSentryError.CantEncodeEvent)
+        do {
+            let data = try JSONEncoder().encode(event)
+            var request = try HTTPClient.Request(url: dsn.getStoreApiEndpointUrl(), method: .POST)
+            
+            request.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
+            request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
+            request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dsn.getAuthHeader())
+            request.body = HTTPClient.Body.data(data)
+
+            return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing({ resp -> UUID in
+                guard var body = resp.body, let id = body.getUUIDHexadecimalEncoded() else {
+                    throw SwiftSentryError.NoResponseBody(status: resp.status.code)
+                }
+                return id
+            })
+        } catch {
+            return eventLoop.makeFailedFuture(error)
         }
-
-        guard var request = try? HTTPClient.Request(url: dsn.getStoreApiEndpointUrl(), method: .POST) else {
-            return eventLoop.makeFailedFuture(SwiftSentryError.CantCreateRequest)
-        }
-
-        request.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
-        request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
-        request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dsn.getAuthHeader())
-        request.body = HTTPClient.Body.data(data)
-
-        return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing({ resp -> UUID in
-            guard var body = resp.body, let id = body.getUUIDHexadecimalEncoded() else {
-                throw SwiftSentryError.NoResponseBody(status: resp.status.code)
-            }
-            return id
-        })
     }
 }
