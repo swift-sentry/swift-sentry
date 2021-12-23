@@ -112,7 +112,7 @@ public struct Sentry {
             user: nil
         )
 
-        return send(event: event)
+        return send(event: event, eventLoop: eventLoop)
     }
 
     @discardableResult

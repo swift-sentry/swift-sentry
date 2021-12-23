@@ -86,3 +86,4 @@ stderr_logfile=/var/log/supervisor/%(program_name)-stderr.log
 
 # TODO
 - Capture stack traces for all logs (See [Vapor Stacktrace implementation](https://github.com/vapor/vapor/blob/73d57959a96ceca719558e70c320b2f729d2b25b/Sources/Vapor/Error/StackTrace.swift))
+- Additional repository `SentryVapor` to abtract logging with vapor requests. E.g. log hostnames, url, request-id
