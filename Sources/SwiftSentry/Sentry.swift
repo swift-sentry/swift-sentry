@@ -28,7 +28,7 @@ public struct Sentry {
     public init(
         dsn: String,
         httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .createNew),
-        servername: String? = ProcessInfo.processInfo.hostName,
+        servername: String? = getHostname(),
         release: String? = nil,
         environment: String? = nil
     ) throws {
@@ -41,6 +41,16 @@ public struct Sentry {
 
     public func shutdown() throws {
         try httpClient.syncShutdown()
+    }
+    
+    /// Get hostname from linux C function `gethostname`. The integrated function `ProcessInfo.processInfo.hostName` does not seem to work reliable on linux
+    static public func getHostname() -> String {
+        var data = [CChar](repeating: 0, count: 265)
+        let string: String? = data.withUnsafeMutableBufferPointer({
+            gethostname($0.baseAddress, 256)
+            return String(cString: $0.baseAddress!, encoding: .utf8)
+        })
+        return string ?? ""
     }
 
     @discardableResult
