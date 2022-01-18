@@ -52,8 +52,8 @@ public struct Sentry {
     @discardableResult
     public func capture(error: Error, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let edb = ExceptionDataBag(
-            type: "\(error.self)",
-            value: error.localizedDescription,
+            type: error.localizedDescription,
+            value: nil,
             stacktrace: nil
         )
 
@@ -92,7 +92,7 @@ public struct Sentry {
         line: Int? = #line,
         column: Int? = #column,
         eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
-        
+
         let frame = Frame(filename: file, function: function, raw_function: nil, lineno: line, colno: column, abs_path: filePath, instruction_addr: nil)
         let stacktrace = Stacktrace(frames: [frame])
 
@@ -107,7 +107,7 @@ public struct Sentry {
             tags: tags,
             environment: environment,
             message: .raw(message: message),
-            exception: Exceptions(values: [ExceptionDataBag(type: level.rawValue, value: nil, stacktrace: stacktrace)]),
+            exception: Exceptions(values: [ExceptionDataBag(type: message, value: nil, stacktrace: stacktrace)]),
             breadcrumbs: nil,
             user: nil
         )
