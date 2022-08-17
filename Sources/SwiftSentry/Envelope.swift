@@ -33,27 +33,18 @@ public struct Envelope {
         var event_transaction_count: UInt64 = 0
         var req_event_id: UInt64 = 0
         var returnData = try encoder.encode(header) + NewlineData.newlineData
+        items.forEach {
+            event_transaction_count += ($0.header.type == "transaction" || $0.header.type == "event") ? 1 : 0
+            req_event_id += ($0.header.type == "user_report" || $0.header.type == "attachment") ? 1 : 0
+        }
+        if event_transaction_count >= 2 { throw EnvelopeError.TooManyErrorsOrTransactions(count: event_transaction_count) }
+        if (req_event_id + event_transaction_count) > 0, header.eventId == nil { throw EnvelopeError.ItemsRequireEventIdButNoEventIdInEnvelopHeader }
         returnData.append(try items
-            .map {
-                if $0.header.type == "transaction" || $0.header.type == "event" {
-                    event_transaction_count += 1
-                } else if $0.header.type == "user_report" || $0.header.type == "attachment" {
-                    req_event_id += 1
-                }
-                return try $0.dump(encoder: encoder)
-            }
+            .map { return try $0.dump(encoder: encoder) }
             .reduce(into: Data()) { acu, adi in
                 acu.append(adi)
             })
-        if event_transaction_count >= 2 {
-            throw EnvelopeError.TooManyErrorsOrTransactions(count: event_transaction_count)
-        }
-        if (req_event_id + event_transaction_count) > 0, header.eventId == nil {
-            throw EnvelopeError.ItemsRequireEventIdButNoEventIdInEnvelopHeader
-        }
-        if returnData.count > Sentry.maxEnvelopeUncompressedSize {
-            throw EnvelopeError.EnvelopeToLarge(size: UInt64(returnData.count))
-        }
+        if returnData.count > Sentry.maxEnvelopeUncompressedSize { throw EnvelopeError.EnvelopeToLarge(size: UInt64(returnData.count)) }
         return returnData
     }
 }
