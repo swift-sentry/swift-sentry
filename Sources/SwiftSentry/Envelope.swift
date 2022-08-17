@@ -29,16 +29,20 @@ public struct Envelope {
         self.items = items
     }
 
-    public func dump(encoder: JSONEncoder) throws -> Data {
+    public func checkValidity1() throws {
         var event_transaction_count: UInt64 = 0
         var req_event_id: UInt64 = 0
-        var returnData = try encoder.encode(header) + NewlineData.newlineData
-        items.forEach {
-            event_transaction_count += ($0.header.type == "transaction" || $0.header.type == "event") ? 1 : 0
-            req_event_id += ($0.header.type == "user_report" || $0.header.type == "attachment") ? 1 : 0
+        (event_transaction_count, req_event_id) = items.reduce(into: (event_transaction_count, req_event_id)) { acc, aci in
+            acc.0 += (aci.header.type == "transaction" || aci.header.type == "event") ? 1 : 0
+            acc.1 += (aci.header.type == "user_report" || aci.header.type == "attachment") ? 1 : 0
         }
         if event_transaction_count >= 2 { throw EnvelopeError.TooManyErrorsOrTransactions(count: event_transaction_count) }
         if (req_event_id + event_transaction_count) > 0, header.eventId == nil { throw EnvelopeError.ItemsRequireEventIdButNoEventIdInEnvelopHeader }
+    }
+
+    public func dump(encoder: JSONEncoder) throws -> Data {
+        try checkValidity1()
+        var returnData = try encoder.encode(header) + NewlineData.newlineData
         returnData.append(try items
             .map { return try $0.dump(encoder: encoder) }
             .reduce(into: Data()) { acu, adi in

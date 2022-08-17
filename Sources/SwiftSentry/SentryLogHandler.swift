@@ -35,42 +35,30 @@ public struct SentryLogHandler: LogHandler {
         let tags = metadataEscaped.mapValues { "\($0)" }
         if let attachment = evalMetadata(metadata: metadataEscaped) {
             let uid = UUID()
-            var envelope: Envelope = .init(
-                header: .init(eventId: uid, dsn: nil, sdk: nil),
-                items: []
-            )
             do {
-                let eventData = try JSONEncoder().encode(
-                    Event(
-                        event_id: uid,
-                        timestamp: Date().timeIntervalSince1970,
-                        level: Level(from: level),
-                        logger: source,
-                        transaction: metadataEscaped["transaction"]?.description,
-                        server_name: sentry.servername,
-                        release: sentry.release,
-                        tags: tags.isEmpty ? nil : tags,
-                        environment: sentry.environment,
-                        message: .raw(message: message.description),
-                        exception: nil,
-                        breadcrumbs: nil,
-                        user: nil
-                    )
-                )
-                envelope.items.append(try .init(
-                    header: .init(type: "event", length: UInt64(eventData.count), filename: nil, contentType: "application/json"),
-                    data: eventData
+                let eventData = try JSONEncoder().encode(Event(
+                    event_id: uid,
+                    timestamp: Date().timeIntervalSince1970,
+                    level: Level(from: level),
+                    logger: source,
+                    transaction: metadataEscaped["transaction"]?.description,
+                    server_name: sentry.servername,
+                    release: sentry.release,
+                    tags: tags.isEmpty ? nil : tags,
+                    environment: sentry.environment,
+                    message: .raw(message: message.description),
+                    exception: nil,
+                    breadcrumbs: nil,
+                    user: nil
                 ))
-            } catch {
-                return
-            }
-            do {
-                envelope.items.append(try attachment.toEnvelopeItem())
-            } catch {}
-            let hm = sentry.capture(envelope: envelope)
-            print("after sent")
-            do {
-                print(try hm.wait())
+                let envelope: Envelope = .init(header: .init(eventId: uid, dsn: nil, sdk: nil), items: [
+                    try .init(
+                        header: .init(type: "event", length: UInt64(eventData.count), filename: nil, contentType: "application/json"),
+                        data: eventData
+                    ),
+                    try attachment.toEnvelopeItem(),
+                ])
+                sentry.capture(envelope: envelope)
             } catch {}
             return
         }
