@@ -35,16 +35,15 @@ public struct SentryLogHandler: LogHandler {
         let tags = metadataEscaped.mapValues { "\($0)" }
         if let attachment = evalMetadata(metadata: metadataEscaped) {
             let uid = UUID()
-            let frame = Frame(filename: file, function: function, raw_function: nil, lineno: Int(line), colno: nil, abs_path: nil, instruction_addr: nil)
-            let stacktrace = Stacktrace(frames: [frame])
             var envelope: Envelope = .init(
                 header: .init(eventId: uid, dsn: nil, sdk: nil),
                 items: []
             )
             do {
                 let eventData = try JSONEncoder().encode(
-                    LimitedEvent(
+                    Event(
                         event_id: uid,
+                        timestamp: Date().timeIntervalSince1970,
                         level: Level(from: level),
                         logger: source,
                         transaction: metadataEscaped["transaction"]?.description,
@@ -53,7 +52,9 @@ public struct SentryLogHandler: LogHandler {
                         tags: tags.isEmpty ? nil : tags,
                         environment: sentry.environment,
                         message: .raw(message: message.description),
-                        exception: Exceptions(values: [ExceptionDataBag(type: message.description, value: nil, stacktrace: stacktrace)])
+                        exception: nil,
+                        breadcrumbs: nil,
+                        user: nil
                     )
                 )
                 envelope.items.append(try .init(
@@ -66,7 +67,11 @@ public struct SentryLogHandler: LogHandler {
             do {
                 envelope.items.append(try attachment.toEnvelopeItem())
             } catch {}
-            sentry.capture(envelope: envelope)
+            let hm = sentry.capture(envelope: envelope)
+            print("after sent")
+            do {
+                print(try hm.wait())
+            } catch {}
             return
         }
         sentry.capture(
