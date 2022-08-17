@@ -88,15 +88,15 @@ public struct EnvelopeHeader: Codable {
         var container = encoder
             .container(keyedBy: CodingKeys.self)
         if eventId != nil {
-            try container.encode(eventId, forKey: .init(stringValue: "event_id")!)
+            try container.encode(eventId, forKey: CodingKeys.eventId)
         }
         if dsn != nil {
-            try container.encode(dsn, forKey: .init(stringValue: "dsn")!)
+            try container.encode(dsn, forKey: CodingKeys.dsn)
         }
         if sdk != nil {
-            try container.encode(sdk, forKey: .init(stringValue: "sdk")!)
+            try container.encode(sdk, forKey: CodingKeys.sdk)
         }
-        try container.encode(EnvelopeHeader.RFC3339DateFormatter.string(from: Date()), forKey: .init(stringValue: "sent_at")!)
+        try container.encode(EnvelopeHeader.RFC3339DateFormatter.string(from: Date()), forKey: CodingKeys.sentAt)
     }
 }
 
