@@ -1,11 +1,12 @@
-import Foundation
 import AsyncHTTPClient
+import Foundation
 import NIO
+import NIOFoundationCompat
 
 public struct Sentry {
     enum SwiftSentryError: Error {
-        //case CantEncodeEvent
-        //case CantCreateRequest
+        // case CantEncodeEvent
+        // case CantCreateRequest
         case NoResponseBody(status: UInt)
         case InvalidArgumentException(_ msg: String)
     }
@@ -17,6 +18,14 @@ public struct Sentry {
     internal var servername: String?
     internal var release: String?
     internal var environment: String?
+    internal static var maxAttachmentSize = 20_971_520
+    internal static let maxEnvelopeCompressedSize = 20_000_000
+    internal static let maxEnvelopeUncompressedSize = 100_000_000
+    internal static let maxAllAtachmentsCombined = 100_000_000
+    internal static let maxEachAtachment = 100_000_000
+    internal static let maxEventAndTransaction = 1_000_000
+    internal static let maxSessionsPerEnvelope = 100
+    internal static let maxSessionBucketPerSessions = 100
 
     public init(
         dsn: String,
@@ -35,17 +44,17 @@ public struct Sentry {
     public func shutdown() throws {
         try httpClient.syncShutdown()
     }
-    
+
     /// Get hostname from linux C function `gethostname`. The integrated function `ProcessInfo.processInfo.hostName` does not seem to work reliable on linux
-    static public func getHostname() -> String {
+    public static func getHostname() -> String {
         var data = [CChar](repeating: 0, count: 265)
-        let string: String? = data.withUnsafeMutableBufferPointer({
+        let string: String? = data.withUnsafeMutableBufferPointer {
             guard let ptr = $0.baseAddress else {
                 return nil
             }
             gethostname(ptr, 256)
             return String(cString: ptr, encoding: .utf8)
-        })
+        }
         return string ?? ""
     }
 
@@ -65,10 +74,10 @@ public struct Sentry {
             level: .error,
             logger: nil,
             transaction: nil,
-            server_name: self.servername,
-            release: self.release,
+            server_name: servername,
+            release: release,
             tags: nil,
-            environment: self.environment,
+            environment: environment,
             message: .raw(message: "\(error.localizedDescription)"),
             exception: exceptions,
             breadcrumbs: nil,
@@ -77,7 +86,7 @@ public struct Sentry {
 
         return send(event: event, eventLoop: eventLoop)
     }
-    
+
     /// Log a message to sentry
     @discardableResult
     public func capture(
@@ -91,8 +100,8 @@ public struct Sentry {
         function: String? = #function,
         line: Int? = #line,
         column: Int? = #column,
-        eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
-
+        eventLoop: EventLoop? = nil
+    ) -> EventLoopFuture<UUID> {
         let frame = Frame(filename: file, function: function, raw_function: nil, lineno: line, colno: column, abs_path: filePath, instruction_addr: nil)
         let stacktrace = Stacktrace(frames: [frame])
 
@@ -116,6 +125,14 @@ public struct Sentry {
     }
 
     @discardableResult
+    public func capture(
+        envelope: Envelope,
+        eventLoop: EventLoop? = nil
+    ) -> EventLoopFuture<UUID> {
+        return send(envelope: envelope, eventLoop: eventLoop)
+    }
+
+    @discardableResult
     public func uploadStackTrace(path: String, eventLoop: EventLoop? = nil) throws -> EventLoopFuture<[UUID]> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
 
@@ -126,12 +143,16 @@ public struct Sentry {
 
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
-        
+
         let events = FatalError.parseStacktrace(content).map {
             $0.getEvent(servername: servername, release: release, environment: environment)
         }
 
-        return EventLoopFuture.whenAllSucceed(events.map ({ send(event: $0) }), on: eventLoop)
+        return EventLoopFuture.whenAllSucceed(events.map { send(event: $0) }, on: eventLoop)
+    }
+
+    struct SentryUUIDResponse: Codable {
+        public var id: String
     }
 
     @discardableResult
@@ -141,18 +162,47 @@ public struct Sentry {
         do {
             let data = try JSONEncoder().encode(event)
             var request = try HTTPClient.Request(url: dsn.getStoreApiEndpointUrl(), method: .POST)
-            
+
             request.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
             request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
-            request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: self.dsn.getAuthHeader())
+            request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: dsn.getAuthHeader())
             request.body = HTTPClient.Body.data(data)
 
-            return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing({ resp -> UUID in
-                guard var body = resp.body, let id = body.getUUIDHexadecimalEncoded() else {
+            return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing { resp -> UUID in
+                guard let body = resp.body,
+                      let decodable = try body.getJSONDecodable(SentryUUIDResponse.self, at: 0, length: body.readableBytes),
+                      let id = UUID(fromHexadecimalEncodedString: decodable.id)
+                else {
                     throw SwiftSentryError.NoResponseBody(status: resp.status.code)
                 }
                 return id
-            })
+            }
+        } catch {
+            return eventLoop.makeFailedFuture(error)
+        }
+    }
+
+    @discardableResult
+    internal func send(envelope: Envelope, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
+        let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
+
+        do {
+            var request = try HTTPClient.Request(url: dsn.getEnvelopeApiEndpointUrl(), method: .POST)
+
+            request.headers.replaceOrAdd(name: "Content-Type", value: "application/x-sentry-envelope")
+            request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
+            request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: dsn.getAuthHeader())
+            request.body = HTTPClient.Body.data(try envelope.dump(encoder: JSONEncoder()))
+
+            return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing { resp -> UUID in
+                guard let body = resp.body,
+                      let decodable = try body.getJSONDecodable(SentryUUIDResponse.self, at: 0, length: body.readableBytes),
+                      let id = UUID(fromHexadecimalEncodedString: decodable.id)
+                else {
+                    throw SwiftSentryError.NoResponseBody(status: resp.status.code)
+                }
+                return id
+            }
         } catch {
             return eventLoop.makeFailedFuture(error)
         }
