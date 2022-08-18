@@ -100,7 +100,7 @@ public struct EnvelopeItemHeader: Codable {
     public var length: UInt64
     public var filename: String?
     public var contentType: String?
-    public init(type: String, length: UInt64, filename: String?, contentType: String?) {
+    public init(type: String, length: UInt64 = 0, filename: String?, contentType: String?) {
         self.type = type
         self.length = length
         self.filename = filename
@@ -124,11 +124,9 @@ public struct EnvelopeItem {
 
     public var header: EnvelopeItemHeader
     public var data: Data
-    public init(header: EnvelopeItemHeader, data: Data) throws {
-        if header.length != UInt64(data.count) {
-            throw EnvelopeItemError.SizeMissmatch(givenSize: header.length, actualSize: UInt64(data.count))
-        }
+    public init(header: EnvelopeItemHeader, data: Data) {
         self.header = header
+        self.header.length = UInt64(data.count)
         self.data = data
     }
 
@@ -152,7 +150,7 @@ public struct EnvelopeItem {
     }
 }
 
-public struct Attachment {
+public struct Attachment: Sendable {
     public enum AttachmentError: Error {
         case NoDataOrFilenameOrPath
         case FileReadFailed
@@ -167,12 +165,24 @@ public struct Attachment {
         if tempData.count > Sentry.maxAttachmentSize {
             tempData.removeAll()
         }
-        return try EnvelopeItem(header: EnvelopeItemHeader(type: "attachment", length: UInt64(tempData.count), filename: filename, contentType: contentType), data: tempData)
+        return EnvelopeItem(header: EnvelopeItemHeader(type: "attachment", length: UInt64(tempData.count), filename: filename, contentType: contentType), data: tempData)
+    }
+
+    public func toEnvelopeItem() -> EnvelopeItem? {
+        do {
+            var tempData = try payload.dump()
+            if tempData.count > Sentry.maxAttachmentSize {
+                tempData.removeAll()
+            }
+            return EnvelopeItem(header: EnvelopeItemHeader(type: "attachment", length: UInt64(tempData.count), filename: filename, contentType: contentType), data: tempData)
+        } catch {
+            return nil
+        }
     }
 
     public init(data: Data, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
-        payload = .fromPayload(data)
+        payload = .fromPayload([UInt8](data))
         self.contentType = contentType
     }
 
@@ -193,14 +203,14 @@ public struct Attachment {
         self.contentType = contentType
     }
 
-    public init(path: String, filenameNN: String, contentType: String = Attachment.defaultContentType) {
-        filename = filenameNN
+    public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
+        self.filename = filename
         payload = .fromFile(path, filename)
         self.contentType = contentType
     }
 
-    public enum AttachmentPayload {
-        case fromPayload(Data)
+    public enum AttachmentPayload: Sendable {
+        case fromPayload([UInt8])
         case fromFile(String?, String)
         public func dump() throws -> Data {
             switch self {
@@ -211,7 +221,7 @@ public struct Attachment {
                     throw AttachmentError.FileReadFailed
                 }
             case let .fromPayload(data):
-                return data
+                return Data(data)
             }
         }
     }

@@ -36,31 +36,30 @@ public struct SentryLogHandler: LogHandler {
         if let attachment = evalMetadata(metadata: metadataEscaped) {
             let uid = UUID()
             do {
-                let eventData = try JSONEncoder().encode(Event(
-                    event_id: uid,
-                    timestamp: Date().timeIntervalSince1970,
+                let eventData = try makeEventData(
+                    message: message.description,
                     level: Level(from: level),
+                    uid: uid,
+                    servername: sentry.servername,
+                    release: sentry.release,
+                    environment: sentry.environment,
                     logger: source,
                     transaction: metadataEscaped["transaction"]?.description,
-                    server_name: sentry.servername,
-                    release: sentry.release,
                     tags: tags.isEmpty ? nil : tags,
-                    environment: sentry.environment,
-                    message: .raw(message: message.description),
-                    exception: nil,
-                    breadcrumbs: nil,
-                    user: nil
-                ))
+                    file: file,
+                    function: function,
+                    line: Int(line)
+                )
                 let envelope: Envelope = .init(header: .init(eventId: uid, dsn: nil, sdk: nil), items: [
-                    try .init(
-                        header: .init(type: "event", length: UInt64(eventData.count), filename: nil, contentType: "application/json"),
+                    .init(
+                        header: .init(type: "event", filename: nil, contentType: "application/json"),
                         data: eventData
                     ),
-                    try attachment.toEnvelopeItem(),
-                ])
+                    attachment.toEnvelopeItem(),
+                ].compactMap { $0 })
                 sentry.capture(envelope: envelope)
+                return
             } catch {}
-            return
         }
         sentry.capture(
             message: message.description,
