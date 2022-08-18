@@ -55,7 +55,7 @@ public struct SentryLogHandler: LogHandler {
                         header: .init(type: "event", filename: nil, contentType: "application/json"),
                         data: eventData
                     ),
-                    attachment.toEnvelopeItem(),
+                    attachment.toEnvelopeItemNoThrow(),
                 ].compactMap { $0 })
                 sentry.capture(envelope: envelope)
                 return

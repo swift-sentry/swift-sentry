@@ -44,9 +44,3 @@ public func makeEventData(
         user: nil
     ))
 }
-
-extension Attachment: CustomStringConvertible {
-    public var description: String {
-        "Attachment: \(filename)"
-    }
-}
