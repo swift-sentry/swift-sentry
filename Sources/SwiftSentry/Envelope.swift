@@ -150,7 +150,7 @@ public struct EnvelopeItem {
     }
 }
 
-public struct Attachment: Sendable {
+public struct Attachment {
     public enum AttachmentError: Error {
         case NoDataOrFilenameOrPath
         case FileReadFailed
@@ -205,7 +205,7 @@ public struct Attachment: Sendable {
         self.contentType = contentType
     }
 
-    public enum AttachmentPayload: Sendable {
+    public enum AttachmentPayload {
         case fromPayload([UInt8])
         case fromFile(String?, String)
         public func dump() throws -> Data {
@@ -222,3 +222,9 @@ public struct Attachment: Sendable {
         }
     }
 }
+
+#if swift(>=5.5)
+    extension Attachment.AttachmentPayload: Sendable {}
+
+    extension Attachment: Sendable {}
+#endif
