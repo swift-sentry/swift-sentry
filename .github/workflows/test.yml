@@ -79,12 +79,12 @@ jobs:
     - uses: actions/checkout@master
     - name: Cache resolved dependencies
       id: cache-resolved-dependencies
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: |
           .build
           Package.resolved
-        key: ${{ matrix.cache-version }}-${{ runner.os }}-${{ steps.get-swift-version.outputs.version }}-${{ env.cache_version }}-spm-deps-${{ hashFiles('**/Package.swift', '**/Package.resolved') }}
+        key: ${{ matrix.cache-version }}-${{ runner.os }}-${{ steps.get-swift-version.outputs.version }}-${{ env.cache_version }}-spm-deps-${{ hashFiles('**/Package.resolved') }}
         restore-keys: |
           ${{ matrix.cache-version }}-${{ runner.os }}-${{ steps.get-swift-version.outputs.version }}-${{ env.cache_version }}-spm-deps-
     - name: Resolve dependencies
