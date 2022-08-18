@@ -6,7 +6,7 @@ public struct SentryLogHandler: LogHandler {
     private let sentry: Sentry
     public var metadata = Logger.Metadata()
     public var logLevel: Logger.Level
-    private let attachmentKey: String
+    private let attachmentKey: String?
 
     public subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
         get {
@@ -17,7 +17,7 @@ public struct SentryLogHandler: LogHandler {
         }
     }
 
-    public init(label: String, sentry: Sentry, level: Logger.Level, attachmentKey: String = "Attachment") {
+    public init(label: String, sentry: Sentry, level: Logger.Level, attachmentKey: String? = "Attachment") {
         self.label = label
         self.sentry = sentry
         logLevel = level

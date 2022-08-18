@@ -40,14 +40,15 @@ public struct Envelope {
         if (req_event_id + event_transaction_count) > 0, header.eventId == nil { throw EnvelopeError.ItemsRequireEventIdButNoEventIdInEnvelopHeader }
     }
 
+    public func prepData(encoder: JSONEncoder) throws -> Data {
+        let dumpedItems = try items.map { try $0.dump(encoder: encoder) }
+        return dumpedItems.reduce(into: Data(capacity: dumpedItems.map { $0.count }.reduce(into: 0) { $0 += $1 })) { $0.append($1) }
+    }
+
     public func dump(encoder: JSONEncoder) throws -> Data {
         try checkValidity1()
         var returnData = try encoder.encode(header) + NewlineData.newlineData
-        returnData.append(try items
-            .map { return try $0.dump(encoder: encoder) }
-            .reduce(into: Data()) { acu, adi in
-                acu.append(adi)
-            })
+        returnData.append(try prepData(encoder: encoder))
         if returnData.count > Sentry.maxEnvelopeUncompressedSize { throw EnvelopeError.EnvelopeToLarge(size: UInt64(returnData.count)) }
         return returnData
     }
@@ -150,7 +151,7 @@ public struct EnvelopeItem {
     }
 }
 
-public struct Attachment {
+public struct Attachment: CustomStringConvertible {
     public enum AttachmentError: Error {
         case NoDataOrFilenameOrPath
         case FileReadFailed
@@ -160,6 +161,10 @@ public struct Attachment {
     public var filename: String
     public var payload: AttachmentPayload
     public var contentType: String
+    public var description: String {
+        "Attachment: \(filename)"
+    }
+
     public func toEnvelopeItem() throws -> EnvelopeItem {
         var tempData = try payload.dump()
         if tempData.count > Sentry.maxAttachmentSize {

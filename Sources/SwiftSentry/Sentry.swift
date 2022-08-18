@@ -18,7 +18,9 @@ public struct Sentry {
     internal var servername: String?
     internal var release: String?
     internal var environment: String?
+    // This one can be changed, it's merely the default value
     internal static var maxAttachmentSize = 20_971_520
+    // These ones are set by Sentry
     internal static let maxEnvelopeCompressedSize = 20_000_000
     internal static let maxEnvelopeUncompressedSize = 100_000_000
     internal static let maxAllAtachmentsCombined = 100_000_000

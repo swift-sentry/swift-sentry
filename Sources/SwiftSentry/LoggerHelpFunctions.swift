@@ -1,8 +1,12 @@
 import Foundation
 import Logging
 
-public func evalMetadata(metadata: Logger.Metadata, attachmentKey: String) -> Attachment? {
-    if let attachmentValue = metadata[attachmentKey],
+// Check Wether there is an Attachment in the Logger.Metadata with the specified attachment Key
+// If the specified AttachmentKey is nil or it has no value or the value can't be converted to
+// an attachement, nil will be returned
+public func evalMetadata(metadata: Logger.Metadata, attachmentKey: String?) -> Attachment? {
+    if let attachmentKey = attachmentKey,
+       let attachmentValue = metadata[attachmentKey],
        case let .stringConvertible(attachmentCon) = attachmentValue,
        let attachment: Attachment = attachmentCon as? Attachment
     {
@@ -43,10 +47,4 @@ public func makeEventData(
         breadcrumbs: nil,
         user: nil
     ))
-}
-
-extension Attachment: CustomStringConvertible {
-    public var description: String {
-        "Attachment: \(filename)"
-    }
 }
