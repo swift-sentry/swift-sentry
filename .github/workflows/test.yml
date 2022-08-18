@@ -60,13 +60,10 @@ jobs:
         include:
           - swift: nightly-5.5
             container: "swiftlang/swift:nightly-5.5-focal"
-            cache-version: 2
           - swift: "5.4"
             container: "swift:5.4"
-            cache-version: 2
           - swift: "5.3"
             container: "swift:5.3"
-            cache-version: 1
     runs-on: ubuntu-20.04
     container: ${{ matrix.container }}
     name: Linux
