@@ -150,158 +150,75 @@ public struct EnvelopeItem {
     }
 }
 
-#if swift(>=5.7)
-    public struct Attachment: CustomStringConvertible, Sendable {
-        public enum AttachmentError: Error {
-            case NoDataOrFilenameOrPath
-            case FileReadFailed
-        }
+public struct Attachment: Sendable {
+    public enum AttachmentError: Error {
+        case NoDataOrFilenameOrPath
+        case FileReadFailed
+    }
 
-        public var description: String {
-            "Attachment: \(filename)"
+    public static let defaultContentType = "application/octet-stream"
+    public var filename: String
+    public var payload: AttachmentPayload
+    public var contentType: String
+    public func toEnvelopeItem() throws -> EnvelopeItem {
+        var tempData = try payload.dump()
+        if tempData.count > Sentry.maxAttachmentSize {
+            tempData.removeAll()
         }
+        return EnvelopeItem(header: EnvelopeItemHeader(type: "attachment", length: UInt64(tempData.count), filename: filename, contentType: contentType), data: tempData)
+    }
 
-        public static let defaultContentType = "application/octet-stream"
-        public var filename: String
-        public var payload: AttachmentPayload
-        public var contentType: String
-        public func toEnvelopeItem() throws -> EnvelopeItem {
-            var tempData = try payload.dump()
-            if tempData.count > Sentry.maxAttachmentSize {
-                tempData.removeAll()
-            }
-            return EnvelopeItem(header: EnvelopeItemHeader(type: "attachment", length: UInt64(tempData.count), filename: filename, contentType: contentType), data: tempData)
+    public func toEnvelopeItemNoThrow() -> EnvelopeItem? {
+        do {
+            return try toEnvelopeItem()
+        } catch {
+            return nil
         }
+    }
 
-        public func toEnvelopeItemNoThrow() -> EnvelopeItem? {
-            do {
-                return try toEnvelopeItem()
-            } catch {
-                return nil
-            }
-        }
+    public init(data: Data, filename: String, contentType: String = Attachment.defaultContentType) {
+        self.filename = filename
+        payload = .fromPayload([UInt8](data))
+        self.contentType = contentType
+    }
 
-        public init(data: Data, filename: String, contentType: String = Attachment.defaultContentType) {
+    public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) throws {
+        var path = path
+        if let filename = filename {
             self.filename = filename
-            payload = .fromPayload([UInt8](data))
-            self.contentType = contentType
-        }
-
-        public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) throws {
-            var path = path
-            if let filename = filename {
-                self.filename = filename
-            } else {
-                let tmep = path.components(separatedBy: "/")
-                guard let filename = tmep.last else {
-                    throw AttachmentError.NoDataOrFilenameOrPath
-                }
-                self.filename = filename
-                path = tmep.dropLast().joined(separator: "/")
+        } else {
+            let tmep = path.components(separatedBy: "/")
+            guard let filename = tmep.last else {
+                throw AttachmentError.NoDataOrFilenameOrPath
             }
-
-            payload = .fromFile(path, self.filename)
-            self.contentType = contentType
-        }
-
-        public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
             self.filename = filename
-            payload = .fromFile(path, filename)
-            self.contentType = contentType
+            path = tmep.dropLast().joined(separator: "/")
         }
 
-        public enum AttachmentPayload: Sendable {
-            case fromPayload([UInt8])
-            case fromFile(String?, String)
-            public func dump() throws -> Data {
-                switch self {
-                case let .fromFile(path, filename):
-                    do {
-                        return try Data(contentsOf: URL(fileURLWithPath: (path ?? "") + filename))
-                    } catch {
-                        throw AttachmentError.FileReadFailed
-                    }
-                case let .fromPayload(data):
-                    return Data(data)
+        payload = .fromFile(path, self.filename)
+        self.contentType = contentType
+    }
+
+    public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
+        self.filename = filename
+        payload = .fromFile(path, filename)
+        self.contentType = contentType
+    }
+
+    public enum AttachmentPayload: Sendable {
+        case fromPayload([UInt8])
+        case fromFile(String?, String)
+        public func dump() throws -> Data {
+            switch self {
+            case let .fromFile(path, filename):
+                do {
+                    return try Data(contentsOf: URL(fileURLWithPath: (path ?? "") + filename))
+                } catch {
+                    throw AttachmentError.FileReadFailed
                 }
+            case let .fromPayload(data):
+                return Data(data)
             }
         }
     }
-#else
-    public struct Attachment: CustomStringConvertible {
-        public enum AttachmentError: Error {
-            case NoDataOrFilenameOrPath
-            case FileReadFailed
-        }
-
-        public var description: String {
-            "Attachment: \(filename)"
-        }
-
-        public static let defaultContentType = "application/octet-stream"
-        public var filename: String
-        public var payload: AttachmentPayload
-        public var contentType: String
-        public func toEnvelopeItem() throws -> EnvelopeItem {
-            var tempData = try payload.dump()
-            if tempData.count > Sentry.maxAttachmentSize {
-                tempData.removeAll()
-            }
-            return EnvelopeItem(header: EnvelopeItemHeader(type: "attachment", length: UInt64(tempData.count), filename: filename, contentType: contentType), data: tempData)
-        }
-
-        public func toEnvelopeItemNoThrow() -> EnvelopeItem? {
-            do {
-                return try toEnvelopeItem()
-            } catch {
-                return nil
-            }
-        }
-
-        public init(data: Data, filename: String, contentType: String = Attachment.defaultContentType) {
-            self.filename = filename
-            payload = .fromPayload(data)
-            self.contentType = contentType
-        }
-
-        public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) throws {
-            var path = path
-            if let filename = filename {
-                self.filename = filename
-            } else {
-                let tmep = path.components(separatedBy: "/")
-                guard let filename = tmep.last else {
-                    throw AttachmentError.NoDataOrFilenameOrPath
-                }
-                self.filename = filename
-                path = tmep.dropLast().joined(separator: "/")
-            }
-
-            payload = .fromFile(path, self.filename)
-            self.contentType = contentType
-        }
-
-        public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
-            self.filename = filename
-            payload = .fromFile(path, filename)
-            self.contentType = contentType
-        }
-
-        public enum AttachmentPayload {
-            case fromPayload(Data)
-            case fromFile(String?, String)
-            public func dump() throws -> Data {
-                switch self {
-                case let .fromFile(path, filename):
-                    do {
-                        return try Data(contentsOf: URL(fileURLWithPath: (path ?? "") + filename))
-                    } catch {
-                        throw AttachmentError.FileReadFailed
-                    }
-                case let .fromPayload(data):
-                    return data
-                }
-            }
-        }
-    }
-#endif
+}
