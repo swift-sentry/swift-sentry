@@ -6,6 +6,7 @@ public struct SentryLogHandler: LogHandler {
     private let sentry: Sentry
     public var metadata = Logger.Metadata()
     public var logLevel: Logger.Level
+    private let attachmentKey: String
 
     public subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
         get {
@@ -16,10 +17,11 @@ public struct SentryLogHandler: LogHandler {
         }
     }
 
-    public init(label: String, sentry: Sentry, level: Logger.Level) {
+    public init(label: String, sentry: Sentry, level: Logger.Level, attachmentKey: String = "Attachment") {
         self.label = label
         self.sentry = sentry
         logLevel = level
+        self.attachmentKey = attachmentKey
     }
 
     public func log(
@@ -33,7 +35,7 @@ public struct SentryLogHandler: LogHandler {
     ) {
         let metadataEscaped = metadata.map { $0.merging(self.metadata, uniquingKeysWith: { a, _ in a }) } ?? self.metadata
         let tags = metadataEscaped.mapValues { "\($0)" }
-        if let attachment = evalMetadata(metadata: metadataEscaped) {
+        if let attachment = evalMetadata(metadata: metadataEscaped, attachmentKey: attachmentKey) {
             let uid = UUID()
             do {
                 let eventData = try makeEventData(

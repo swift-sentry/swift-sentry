@@ -1,8 +1,8 @@
 import Foundation
 import Logging
 
-public func evalMetadata(metadata: Logger.Metadata) -> Attachment? {
-    if let attachmentValue = metadata["Attachment"],
+public func evalMetadata(metadata: Logger.Metadata, attachmentKey: String) -> Attachment? {
+    if let attachmentValue = metadata[attachmentKey],
        case let .stringConvertible(attachmentCon) = attachmentValue,
        let attachment: Attachment = attachmentCon as? Attachment
     {
