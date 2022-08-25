@@ -240,9 +240,3 @@ public struct Attachment: CustomStringConvertible {
         }
     }
 }
-
-#if swift(>=5.5)
-    extension Attachment.AttachmentPayload: Sendable {}
-
-    extension Attachment: Sendable {}
-#endif
