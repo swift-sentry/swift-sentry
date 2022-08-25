@@ -52,13 +52,16 @@ public struct SentryLogHandler: LogHandler {
                     function: function,
                     line: Int(line)
                 )
-                let envelope: Envelope = .init(header: .init(eventId: uid, dsn: nil, sdk: nil), items: [
-                    .init(
-                        header: .init(type: "event", filename: nil, contentType: "application/json"),
-                        data: eventData
-                    ),
-                    attachment.toEnvelopeItemNoThrow(),
-                ].compactMap { $0 })
+                let envelope: Envelope = .init(
+                    header: .init(eventId: uid, dsn: nil, sdk: nil),
+                    items: [
+                        .init(
+                            header: .init(type: "event", filename: nil, contentType: "application/json"),
+                            data: eventData
+                        ),
+                        try? attachment.toEnvelopeItem(),
+                    ].compactMap { $0 }
+                )
                 sentry.capture(envelope: envelope)
                 return
             } catch {}

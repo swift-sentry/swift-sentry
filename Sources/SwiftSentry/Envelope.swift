@@ -7,19 +7,19 @@ public enum EnvelopItemTypes: String {
     case attachment
     case session
     case sessions
-    case user_report
-    case client_report
+    case userReport = "user_report"
+    case clientReport = "client_report"
 }
 
-public enum NewlineData {
+private enum NewlineData {
     static let newlineData = "\n".data(using: String.Encoding.utf8)!
 }
 
 public struct Envelope {
     enum EnvelopeError: Error {
-        case TooManyErrorsOrTransactions(count: UInt64)
-        case ItemsRequireEventIdButNoEventIdInEnvelopHeader
-        case EnvelopeToLarge(size: UInt64)
+        case tooManyErrorsOrTransactions(count: UInt64)
+        case eventIdRequiredButNotPresentInEnvelope
+        case envelopeToLarge(size: UInt64)
     }
 
     public var header: EnvelopeHeader
@@ -28,34 +28,48 @@ public struct Envelope {
         self.header = header
         self.items = items
     }
-
-    public func checkValidity1() throws {
-        var event_transaction_count: UInt64 = 0
-        var req_event_id: UInt64 = 0
-        (event_transaction_count, req_event_id) = items.reduce(into: (event_transaction_count, req_event_id)) { acc, aci in
+    /// checks some requirements from sentry for envelopes
+    private func checkValidity() throws {
+        var eventTransactionCount: UInt64 = 0
+        var itemsReqEventIdCount: UInt64 = 0
+        (eventTransactionCount, itemsReqEventIdCount) = items.reduce(
+            into: (eventTransactionCount, itemsReqEventIdCount)
+        ) { acc, aci in
             acc.0 += (aci.header.type == "transaction" || aci.header.type == "event") ? 1 : 0
             acc.1 += (aci.header.type == "user_report" || aci.header.type == "attachment") ? 1 : 0
         }
-        if event_transaction_count >= 2 { throw EnvelopeError.TooManyErrorsOrTransactions(count: event_transaction_count) }
-        if (req_event_id + event_transaction_count) > 0, header.eventId == nil { throw EnvelopeError.ItemsRequireEventIdButNoEventIdInEnvelopHeader }
+        guard eventTransactionCount < 2 else {
+            throw EnvelopeError.tooManyErrorsOrTransactions(count: eventTransactionCount)
+            // Envelope may contain at most one error or one transaction item
+        }
+        guard (itemsReqEventIdCount + eventTransactionCount) == 0 && header.eventId != nil else {
+            throw EnvelopeError.eventIdRequiredButNotPresentInEnvelope
+        }
     }
-
-    public func prepData(encoder: JSONEncoder) throws -> Data {
+    /// Turns the items of the envelope to data and joins them to one data instance
+    private func prepData(encoder: JSONEncoder) throws -> Data {
         let dumpedItems = try items.map { try $0.dump(encoder: encoder) }
-        return dumpedItems.reduce(into: Data(capacity: dumpedItems.map { $0.count }.reduce(into: 0) { $0 += $1 })) { $0.append($1) }
+        return dumpedItems.reduce(
+            into:
+                Data(capacity: dumpedItems.map { $0.count }.reduce(into: 0) { $0 += $1 })
+        ) {
+            $0.append($1)
+        }
     }
-
+    /// Turns the envelope into data in the correct format for sentry
     public func dump(encoder: JSONEncoder) throws -> Data {
-        try checkValidity1()
+        try checkValidity()
         var returnData = try encoder.encode(header) + NewlineData.newlineData
         returnData.append(try prepData(encoder: encoder))
-        if returnData.count > Sentry.maxEnvelopeUncompressedSize { throw EnvelopeError.EnvelopeToLarge(size: UInt64(returnData.count)) }
+        guard returnData.count <= Sentry.maxEnvelopeUncompressedSize else {
+            throw EnvelopeError.envelopeToLarge(size: UInt64(returnData.count))
+        }
         return returnData
     }
 }
 
 public struct EnvelopeHeader: Codable {
-    public static let RFC3339DateFormatter: DateFormatter = {
+    private static let RFC3339DateFormatter: DateFormatter = {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZZ"
@@ -63,17 +77,17 @@ public struct EnvelopeHeader: Codable {
         return dateFormatter
     }()
 
-    public var eventId: UUID?
-    public var dsn: String?
-    public var sdk: String?
-    public var sentAt: String = ""
+    fileprivate let eventId: UUID?
+    fileprivate let dsn: String?
+    fileprivate let sdk: String?
+    fileprivate let sentAt: String = ""
     public init(eventId: UUID?, dsn: String?, sdk: String?) {
         self.eventId = eventId
         self.dsn = dsn
         self.sdk = sdk
     }
 
-    public enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey {
         case eventId = "event_id"
         case dsn
         case sdk
@@ -81,15 +95,16 @@ public struct EnvelopeHeader: Codable {
     }
 
     public func encode(to encoder: Encoder) throws {
-        var container = encoder
+        var container =
+            encoder
             .container(keyedBy: CodingKeys.self)
-        if eventId != nil {
+        if let eventId = eventId {
             try container.encode(eventId, forKey: CodingKeys.eventId)
         }
-        if dsn != nil {
+        if let dsn = dsn {
             try container.encode(dsn, forKey: CodingKeys.dsn)
         }
-        if sdk != nil {
+        if let sdk = sdk {
             try container.encode(sdk, forKey: CodingKeys.sdk)
         }
         try container.encode(EnvelopeHeader.RFC3339DateFormatter.string(from: Date()), forKey: CodingKeys.sentAt)
@@ -97,10 +112,10 @@ public struct EnvelopeHeader: Codable {
 }
 
 public struct EnvelopeItemHeader: Codable {
-    public var type: String
-    public var length: UInt64
-    public var filename: String?
-    public var contentType: String?
+    fileprivate let type: String
+    fileprivate var length: UInt64
+    fileprivate let filename: String?
+    fileprivate let contentType: String?
     public init(type: String, length: UInt64 = 0, filename: String?, contentType: String?) {
         self.type = type
         self.length = length
@@ -108,7 +123,7 @@ public struct EnvelopeItemHeader: Codable {
         self.contentType = contentType
     }
 
-    public enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey {
         case type
         case length
         case filename
@@ -118,75 +133,79 @@ public struct EnvelopeItemHeader: Codable {
 
 public struct EnvelopeItem {
     public enum EnvelopeItemError: Error {
-        case AttachmentToLarge(size: UInt64)
-        case EventOrAttachmentToLarge(size: UInt64)
-        case SizeMissmatch(givenSize: UInt64, actualSize: UInt64)
+        case attachmentToLarge(size: UInt64)
+        case eventOrTransactionToLarge(size: UInt64)
+        case sizeMissmatch(givenSize: UInt64, actualSize: UInt64)
     }
 
-    public var header: EnvelopeItemHeader
-    public var data: Data
+    fileprivate var header: EnvelopeItemHeader
+    fileprivate let data: Data
     public init(header: EnvelopeItemHeader, data: Data) {
         self.header = header
         self.header.length = UInt64(data.count)
         self.data = data
     }
 
-    public func dumpToString(encoder: JSONEncoder) throws -> String {
-        let headerData = try encoder.encode(header)
-        let returnString = String(data: headerData, encoding: String.Encoding.utf8)! + "\n" + String(data: data, encoding: String.Encoding.utf8)! + "\n"
-        if header.type == "attachment", (headerData.count + 2 + data.count) > Sentry.maxEachAtachment {
-            throw EnvelopeItemError.AttachmentToLarge(size: UInt64(headerData.count + 2 + data.count))
-        }
-        if !(header.type != "event" && header.type != "transaction"), (headerData.count + 2 + data.count) > Sentry.maxEventAndTransaction {
-            throw EnvelopeItemError.EventOrAttachmentToLarge(size: UInt64(headerData.count + 2 + data.count))
-        }
-        return returnString
-    }
-
     public func dump(encoder: JSONEncoder) throws -> Data {
         let returnData = try encoder.encode(header) + NewlineData.newlineData + data + NewlineData.newlineData
-        assert(header.type != "attachment" || returnData.count <= Sentry.maxEachAtachment)
-        assert((header.type != "event" && header.type != "transaction") || returnData.count <= Sentry.maxEventAndTransaction)
+        guard header.type != "attachment" || returnData.count <= Sentry.maxEachAtachment else {
+            throw EnvelopeItemError.attachmentToLarge(
+                size: UInt64(returnData.count)
+            )
+        }
+        guard
+            (header.type != "event" && header.type != "transaction")
+                || (returnData.count <= Sentry.maxEventAndTransaction)
+        else {
+            throw EnvelopeItemError.eventOrTransactionToLarge(
+                size: UInt64(returnData.count)
+            )
+        }
         return returnData
     }
 }
 
 public struct Attachment: CustomStringConvertible {
     public enum AttachmentError: Error {
-        case NoDataOrFilenameOrPath
-        case FileReadFailed
+        /// This error shouldn't be able to be thrown, but it prevents an
+        /// forceful unwrapping from crashing the application
+        case noDataOrFilenameOrPath
+        /// Error in case the File on Disk of the Attachment couldn't be reaad for some reason
+        case fileReadFailed
     }
 
     public static let defaultContentType = "application/octet-stream"
-    public var filename: String
-    public var payload: AttachmentPayload
-    public var contentType: String
+    fileprivate let filename: String
+    fileprivate let payload: AttachmentPayload
+    fileprivate let contentType: String
     public var description: String {
         "Attachment: \(filename)"
     }
-
+    /// converts the Attachment to an EnvelopeItem
+    /// if the Attachment is a FileAttachment, the file gets read at this point
     public func toEnvelopeItem() throws -> EnvelopeItem {
         var tempData = try payload.dump()
         if tempData.count > Sentry.maxAttachmentSize {
             tempData.removeAll()
         }
-        return EnvelopeItem(header: EnvelopeItemHeader(type: "attachment", length: UInt64(tempData.count), filename: filename, contentType: contentType), data: tempData)
+        return EnvelopeItem(
+            header: EnvelopeItemHeader(
+                type: "attachment",
+                length: UInt64(tempData.count),
+                filename: filename,
+                contentType: contentType
+            ),
+            data: tempData
+        )
     }
-
-    public func toEnvelopeItemNoThrow() -> EnvelopeItem? {
-        do {
-            return try toEnvelopeItem()
-        } catch {
-            return nil
-        }
-    }
-
+    /// Constructs an Attachment with a filename and the given data
     public init(data: Data, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
         payload = .fromPayload([UInt8](data))
         self.contentType = contentType
     }
-
+    /// Constructs an Attachment from a file on disk, if no filename is given, one gets
+    /// inferred from path
     public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) throws {
         var path = path
         if let filename = filename {
@@ -194,7 +213,7 @@ public struct Attachment: CustomStringConvertible {
         } else {
             let tmep = path.components(separatedBy: "/")
             guard let filename = tmep.last else {
-                throw AttachmentError.NoDataOrFilenameOrPath
+                throw AttachmentError.noDataOrFilenameOrPath
             }
             self.filename = filename
             path = tmep.dropLast().joined(separator: "/")
@@ -203,7 +222,7 @@ public struct Attachment: CustomStringConvertible {
         payload = .fromFile(path, self.filename)
         self.contentType = contentType
     }
-
+    /// Contructs an Attachment from a file on disk, without inferring the filename
     public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
         payload = .fromFile(path, filename)
@@ -219,7 +238,7 @@ public struct Attachment: CustomStringConvertible {
                 do {
                     return try Data(contentsOf: URL(fileURLWithPath: (path ?? "") + filename))
                 } catch {
-                    throw AttachmentError.FileReadFailed
+                    throw AttachmentError.fileReadFailed
                 }
             case let .fromPayload(data):
                 return Data(data)
