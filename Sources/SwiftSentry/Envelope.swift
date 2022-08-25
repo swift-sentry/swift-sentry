@@ -42,7 +42,7 @@ public struct Envelope {
             throw EnvelopeError.tooManyErrorsOrTransactions(count: eventTransactionCount)
             // Envelope may contain at most one error or one transaction item
         }
-        guard (itemsReqEventIdCount + eventTransactionCount) == 0 && header.eventId != nil else {
+        guard (itemsReqEventIdCount + eventTransactionCount) == 0 || header.eventId != nil else {
             throw EnvelopeError.eventIdRequiredButNotPresentInEnvelope
         }
     }
