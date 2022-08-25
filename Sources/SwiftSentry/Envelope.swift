@@ -49,10 +49,10 @@ public struct Envelope {
     /// Turns the items of the envelope to data and joins them to one data instance
     private func prepData(encoder: JSONEncoder) throws -> Data {
         let dumpedItems = try items.map { try $0.dump(encoder: encoder) }
-        return dumpedItems.reduce(
-            into:
-                Data(capacity: dumpedItems.map { $0.count }.reduce(into: 0) { $0 += $1 })
-        ) {
+
+        let len = dumpedItems.map { $0.count }.reduce(into: 0) { $0 += $1 }
+
+        return dumpedItems.reduce(into: Data(capacity: len)) {
             $0.append($1)
         }
     }
@@ -68,7 +68,7 @@ public struct Envelope {
     }
 }
 
-public struct EnvelopeHeader: Codable {
+public struct EnvelopeHeader: Encodable {
     private static let RFC3339DateFormatter: DateFormatter = {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -78,9 +78,9 @@ public struct EnvelopeHeader: Codable {
     }()
 
     fileprivate let eventId: UUID?
-    fileprivate let dsn: String?
-    fileprivate let sdk: String?
-    fileprivate let sentAt: String = ""
+    private let dsn: String?
+    private let sdk: String?
+
     public init(eventId: UUID?, dsn: String?, sdk: String?) {
         self.eventId = eventId
         self.dsn = dsn
@@ -95,9 +95,7 @@ public struct EnvelopeHeader: Codable {
     }
 
     public func encode(to encoder: Encoder) throws {
-        var container =
-            encoder
-            .container(keyedBy: CodingKeys.self)
+        var container = encoder.container(keyedBy: CodingKeys.self)
         if let eventId = eventId {
             try container.encode(eventId, forKey: CodingKeys.eventId)
         }
@@ -116,6 +114,7 @@ public struct EnvelopeItemHeader: Codable {
     fileprivate var length: UInt64
     fileprivate let filename: String?
     fileprivate let contentType: String?
+
     public init(type: String, length: UInt64 = 0, filename: String?, contentType: String?) {
         self.type = type
         self.length = length
@@ -153,13 +152,8 @@ public struct EnvelopeItem {
                 size: UInt64(returnData.count)
             )
         }
-        guard
-            (header.type != "event" && header.type != "transaction")
-                || (returnData.count <= Sentry.maxEventAndTransaction)
-        else {
-            throw EnvelopeItemError.eventOrTransactionToLarge(
-                size: UInt64(returnData.count)
-            )
+        guard (header.type != "event" && header.type != "transaction") || (returnData.count <= Sentry.maxEventAndTransaction) else {
+            throw EnvelopeItemError.eventOrTransactionToLarge(size: UInt64(returnData.count))
         }
         return returnData
     }
