@@ -7,6 +7,8 @@ public struct SentryLogHandler: LogHandler {
     public var metadata = Logger.Metadata()
     public var logLevel: Logger.Level
     private let attachmentKey: String?
+    public var metadataProvider: Logger.MetadataProvider?
+
 
     public subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
         get {
@@ -33,7 +35,9 @@ public struct SentryLogHandler: LogHandler {
         function: String,
         line: UInt
     ) {
-        let metadataEscaped = metadata.map { $0.merging(self.metadata, uniquingKeysWith: { a, _ in a }) } ?? self.metadata
+        let metadataEscaped = (metadata ?? [:])
+            .merging(self.metadata, uniquingKeysWith: { a, _ in a })
+            .merging(self.metadataProvider?.get() ?? [:], uniquingKeysWith: { (a, _) in a })
         let tags = metadataEscaped.mapValues { "\($0)" }
         if let attachment = evalMetadata(metadata: metadataEscaped, attachmentKey: attachmentKey) {
             let uid = UUID()
