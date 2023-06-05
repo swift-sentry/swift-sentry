@@ -3,7 +3,7 @@ import Foundation
 import NIO
 import NIOFoundationCompat
 
-public struct Sentry {
+public final class Sentry {
     enum SwiftSentryError: Error {
         // case CantEncodeEvent
         // case CantCreateRequest
