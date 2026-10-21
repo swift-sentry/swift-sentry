@@ -12,7 +12,7 @@ public enum EnvelopItemTypes: String, Sendable {
 }
 
 private enum NewlineData {
-    static let newlineData = "\n".data(using: String.Encoding.utf8)!
+    static let newlineData = Data("\n".utf8)
 }
 
 public struct Envelope: Sendable {
@@ -28,6 +28,7 @@ public struct Envelope: Sendable {
         self.header = header
         self.items = items
     }
+
     /// checks some requirements from sentry for envelopes
     private func checkValidity() throws {
         var eventTransactionCount: UInt64 = 0
@@ -46,6 +47,7 @@ public struct Envelope: Sendable {
             throw EnvelopeError.eventIdRequiredButNotPresentInEnvelope
         }
     }
+
     /// Turns the items of the envelope to data and joins them to one data instance
     private func prepData(encoder: JSONEncoder) throws -> Data {
         let dumpedItems = try items.map { try $0.dump(encoder: encoder) }
@@ -56,11 +58,12 @@ public struct Envelope: Sendable {
             $0.append($1)
         }
     }
+
     /// Turns the envelope into data in the correct format for sentry
     public func dump(encoder: JSONEncoder) throws -> Data {
         try checkValidity()
         var returnData = try encoder.encode(header) + NewlineData.newlineData
-        returnData.append(try prepData(encoder: encoder))
+        try returnData.append(prepData(encoder: encoder))
         guard returnData.count <= Sentry.maxEnvelopeUncompressedSize else {
             throw EnvelopeError.envelopeToLarge(size: UInt64(returnData.count))
         }
@@ -96,13 +99,13 @@ public struct EnvelopeHeader: Encodable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        if let eventId = eventId {
+        if let eventId {
             try container.encode(eventId, forKey: CodingKeys.eventId)
         }
-        if let dsn = dsn {
+        if let dsn {
             try container.encode(dsn, forKey: CodingKeys.dsn)
         }
-        if let sdk = sdk {
+        if let sdk {
             try container.encode(sdk, forKey: CodingKeys.sdk)
         }
         try container.encode(EnvelopeHeader.RFC3339DateFormatter.string(from: Date()), forKey: CodingKeys.sentAt)
@@ -175,11 +178,12 @@ public struct Attachment: CustomStringConvertible {
     public var description: String {
         "Attachment: \(filename)"
     }
+
     /// converts the Attachment to an EnvelopeItem
     /// if the Attachment is a FileAttachment, the file gets read at this point
-    public func toEnvelopeItem() throws -> EnvelopeItem {
+    public func toEnvelopeItem(maxAttachmentSize: Int = Sentry.defaultMaxAttachmentSize) throws -> EnvelopeItem {
         var tempData = try payload.dump()
-        if tempData.count > Sentry.maxAttachmentSize {
+        if tempData.count > maxAttachmentSize {
             tempData.removeAll()
         }
         return EnvelopeItem(
@@ -192,17 +196,19 @@ public struct Attachment: CustomStringConvertible {
             data: tempData
         )
     }
+
     /// Constructs an Attachment with a filename and the given data
     public init(data: Data, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
         payload = .fromPayload([UInt8](data))
         self.contentType = contentType
     }
+
     /// Constructs an Attachment from a file on disk, if no filename is given, one gets
     /// inferred from path
     public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) throws {
         var path = path
-        if let filename = filename {
+        if let filename {
             self.filename = filename
         } else {
             let tmep = path.components(separatedBy: "/")
@@ -216,6 +222,7 @@ public struct Attachment: CustomStringConvertible {
         payload = .fromFile(path, self.filename)
         self.contentType = contentType
     }
+
     /// Contructs an Attachment from a file on disk, without inferring the filename
     public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
@@ -228,13 +235,13 @@ public struct Attachment: CustomStringConvertible {
         case fromFile(String?, String)
         public func dump() throws -> Data {
             switch self {
-            case let .fromFile(path, filename):
+            case .fromFile(let path, let filename):
                 do {
                     return try Data(contentsOf: URL(fileURLWithPath: (path ?? "") + filename))
                 } catch {
                     throw AttachmentError.fileReadFailed
                 }
-            case let .fromPayload(data):
+            case .fromPayload(let data):
                 return Data(data)
             }
         }

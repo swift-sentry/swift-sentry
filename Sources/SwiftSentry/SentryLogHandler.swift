@@ -9,7 +9,6 @@ public struct SentryLogHandler: LogHandler, Sendable {
     private let attachmentKey: String?
     public var metadataProvider: Logger.MetadataProvider?
 
-
     public subscript(metadataKey metadataKey: String) -> Logger.Metadata.Value? {
         get {
             metadata[metadataKey]
@@ -26,35 +25,27 @@ public struct SentryLogHandler: LogHandler, Sendable {
         self.attachmentKey = attachmentKey
     }
 
-    public func log(
-        level: Logger.Level,
-        message: Logger.Message,
-        metadata: Logger.Metadata?,
-        source: String,
-        file: String,
-        function: String,
-        line: UInt
-    ) {
-        let metadataEscaped = (metadata ?? [:])
+    public func log(event: LogEvent) {
+        let metadataEscaped = (event.metadata ?? [:])
             .merging(self.metadata, uniquingKeysWith: { a, _ in a })
-            .merging(self.metadataProvider?.get() ?? [:], uniquingKeysWith: { (a, _) in a })
+            .merging(self.metadataProvider?.get() ?? [:], uniquingKeysWith: { a, _ in a })
         let tags = metadataEscaped.mapValues { "\($0)" }
         if let attachment = evalMetadata(metadata: metadataEscaped, attachmentKey: attachmentKey) {
             let uid = UUID()
             do {
                 let eventData = try makeEventData(
-                    message: message.description,
-                    level: Level(from: level),
+                    message: event.message.description,
+                    level: Level(from: event.level),
                     uid: uid,
                     servername: sentry.servername,
                     release: sentry.release,
                     environment: sentry.environment,
-                    logger: source,
+                    logger: event.source,
                     transaction: metadataEscaped["transaction"]?.description,
                     tags: tags.isEmpty ? nil : tags,
-                    file: file,
-                    function: function,
-                    line: Int(line)
+                    file: event.file,
+                    function: event.function,
+                    line: Int(event.line)
                 )
                 let envelope: Envelope = .init(
                     header: .init(eventId: uid, dsn: nil, sdk: nil),
@@ -63,7 +54,7 @@ public struct SentryLogHandler: LogHandler, Sendable {
                             header: .init(type: "event", filename: nil, contentType: "application/json"),
                             data: eventData
                         ),
-                        try? attachment.toEnvelopeItem(),
+                        try? attachment.toEnvelopeItem(maxAttachmentSize: sentry.maxAttachmentSize),
                     ].compactMap { $0 }
                 )
                 sentry.capture(envelope: envelope)
@@ -71,15 +62,15 @@ public struct SentryLogHandler: LogHandler, Sendable {
             } catch {}
         }
         sentry.capture(
-            message: message.description,
-            level: Level(from: level),
-            logger: source,
+            message: event.message.description,
+            level: Level(from: event.level),
+            logger: event.source,
             transaction: metadataEscaped["transaction"]?.description,
             tags: tags.isEmpty ? nil : tags,
-            file: file,
+            file: event.file,
             filePath: nil,
-            function: function,
-            line: Int(line),
+            function: event.function,
+            line: Int(event.line),
             column: nil
         )
     }

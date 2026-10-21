@@ -11,36 +11,38 @@ public struct Sentry: Sendable {
         case InvalidArgumentException(_ msg: String)
     }
 
-    internal static let VERSION = "SentrySwift/0.1.0"
+    static let VERSION = "SentrySwift/0.1.0"
 
     private let dsn: Dsn
     private var httpClient: HTTPClient
-    internal var servername: String?
-    internal var release: String?
-    internal var environment: String?
-    // This one can be changed, it's merely the default value
-    internal static var maxAttachmentSize = 20_971_520
+    let maxAttachmentSize: Int
+    var servername: String?
+    var release: String?
+    var environment: String?
+    public static let defaultMaxAttachmentSize: Int = 20_971_520
     // These ones are set by Sentry
-    internal static let maxEnvelopeCompressedSize = 20_000_000
-    internal static let maxEnvelopeUncompressedSize = 100_000_000
-    internal static let maxAllAtachmentsCombined = 100_000_000
-    internal static let maxEachAtachment = 100_000_000
-    internal static let maxEventAndTransaction = 1_000_000
-    internal static let maxSessionsPerEnvelope = 100
-    internal static let maxSessionBucketPerSessions = 100
+    static let maxEnvelopeCompressedSize = 20_000_000
+    static let maxEnvelopeUncompressedSize = 100_000_000
+    static let maxAllAtachmentsCombined = 100_000_000
+    static let maxEachAtachment = 100_000_000
+    static let maxEventAndTransaction = 1_000_000
+    static let maxSessionsPerEnvelope = 100
+    static let maxSessionBucketPerSessions = 100
 
     public init(
         dsn: String,
         httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .createNew),
         servername: String? = getHostname(),
         release: String? = nil,
-        environment: String? = nil
+        environment: String? = nil,
+        maxAttachmentSize: Int = Self.defaultMaxAttachmentSize
     ) throws {
         self.dsn = try Dsn(fromString: dsn)
         self.httpClient = httpClient
         self.servername = servername
         self.release = release
         self.environment = environment
+        self.maxAttachmentSize = maxAttachmentSize
     }
 
     public func shutdown() throws {
@@ -139,7 +141,7 @@ public struct Sentry: Sendable {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
 
         // read all lines from the error log
-        guard let content = try? String(contentsOfFile: path) else {
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             return eventLoop.makeSucceededFuture([UUID]())
         }
 
@@ -154,11 +156,11 @@ public struct Sentry: Sendable {
     }
 
     struct SentryUUIDResponse: Codable {
-        public var id: String
+        var id: String
     }
 
     @discardableResult
-    internal func send(event: Event, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
+    func send(event: Event, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
 
         do {
@@ -185,7 +187,7 @@ public struct Sentry: Sendable {
     }
 
     @discardableResult
-    internal func send(envelope: Envelope, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
+    func send(envelope: Envelope, eventLoop: EventLoop? = nil) -> EventLoopFuture<UUID> {
         let eventLoop = eventLoop ?? httpClient.eventLoopGroup.next()
 
         do {
@@ -194,7 +196,7 @@ public struct Sentry: Sendable {
             request.headers.replaceOrAdd(name: "Content-Type", value: "application/x-sentry-envelope")
             request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
             request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: dsn.getAuthHeader())
-            request.body = HTTPClient.Body.data(try envelope.dump(encoder: JSONEncoder()))
+            request.body = try HTTPClient.Body.data(envelope.dump(encoder: JSONEncoder()))
 
             return httpClient.execute(request: request, eventLoop: .delegate(on: eventLoop)).flatMapThrowing { resp -> UUID in
                 guard let body = resp.body,
