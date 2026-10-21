@@ -31,7 +31,7 @@ public struct Sentry: Sendable {
 
     public init(
         dsn: String,
-        httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .createNew),
+        httpClient: HTTPClient = .shared,
         servername: String? = getHostname(),
         release: String? = nil,
         environment: String? = nil,
