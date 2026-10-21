@@ -1,7 +1,7 @@
 import Foundation
 import Logging
 
-public struct SentryLogHandler: LogHandler {
+public struct SentryLogHandler: LogHandler, Sendable {
     private let label: String
     private let sentry: Sentry
     public var metadata = Logger.Metadata()

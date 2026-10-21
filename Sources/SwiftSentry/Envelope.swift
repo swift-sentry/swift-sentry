@@ -1,7 +1,7 @@
 import Foundation
 import NIOCore
 
-public enum EnvelopItemTypes: String {
+public enum EnvelopItemTypes: String, Sendable {
     case event
     case transaction
     case attachment
@@ -15,7 +15,7 @@ private enum NewlineData {
     static let newlineData = "\n".data(using: String.Encoding.utf8)!
 }
 
-public struct Envelope {
+public struct Envelope: Sendable {
     enum EnvelopeError: Error {
         case tooManyErrorsOrTransactions(count: UInt64)
         case eventIdRequiredButNotPresentInEnvelope
@@ -68,7 +68,7 @@ public struct Envelope {
     }
 }
 
-public struct EnvelopeHeader: Encodable {
+public struct EnvelopeHeader: Encodable, Sendable {
     private static let RFC3339DateFormatter: DateFormatter = {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -109,7 +109,7 @@ public struct EnvelopeHeader: Encodable {
     }
 }
 
-public struct EnvelopeItemHeader: Codable {
+public struct EnvelopeItemHeader: Codable, Sendable {
     fileprivate let type: String
     fileprivate var length: UInt64
     fileprivate let filename: String?
@@ -130,7 +130,7 @@ public struct EnvelopeItemHeader: Codable {
     }
 }
 
-public struct EnvelopeItem {
+public struct EnvelopeItem: Sendable {
     public enum EnvelopeItemError: Error {
         case attachmentToLarge(size: UInt64)
         case eventOrTransactionToLarge(size: UInt64)
