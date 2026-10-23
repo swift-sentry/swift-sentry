@@ -245,12 +245,6 @@ public final class Sentry: Sendable {
         }
     }
 
-    enum Running {
-        case service
-        case task(Task<Void, Never>)
-        case none
-    }
-
     struct SentryUUIDResponse: Codable {
         var id: String?
     }
@@ -305,10 +299,26 @@ public final class Sentry: Sendable {
         )
     }
 
+    /// Stops accepting new envelopes.
+    ///
+    /// Envelopes that are already queued are still submitted, after which ``processEvents()``
+    /// returns. Envelopes submitted after this call are rejected: ``send(envelope:)`` discards
+    /// them and ``capture(envelope:)`` throws ``SwiftSentryError/sentryTerminated``.
+    /// This cannot be undone.
     public func finish() {
         self.guts.cont.finish()
     }
 
+    /// Submits queued envelopes to Sentry until ``finish()`` is called.
+    ///
+    /// Run this in a separate task for the lifetime of the application. When the
+    /// `ServiceLifecycleSupport` trait is enabled, add the `Sentry` instance to a `ServiceGroup`
+    /// instead, which calls this method and calls ``finish()`` on graceful shutdown.
+    ///
+    /// After ``finish()`` was called, this method returns once all queued envelopes are processed.
+    ///
+    /// - Important: Call this method only once per instance, and not in addition to running the
+    ///   instance as a `Service`. A second concurrent call traps.
     public func processEvents() async {
         await withDiscardingTaskGroup { grp in
             for await event in guts.eventStream {
@@ -343,8 +353,9 @@ public final class Sentry: Sendable {
 
     /// Queues an envelope for submission to Sentry without waiting for the result.
     ///
-    /// - Important: Envelopes are only submitted while ``run()`` is running, e.g. in a separate
-    ///   task or as part of a `ServiceGroup`. Envelopes sent before ``run()`` starts are buffered
+    /// - Important: Envelopes are only submitted while ``processEvents()`` is running, either in a
+    ///   separate task or through the `Sentry` service in a `ServiceGroup`. Envelopes sent before
+    ///   processing starts are buffered
     ///   according to the configured ``BufferingPolicy``; envelopes sent after ``finish()`` are
     ///   discarded.
     ///
@@ -359,12 +370,12 @@ public final class Sentry: Sendable {
 
     /// Queues an envelope for submission to Sentry and waits until it was processed.
     ///
-    /// - Important: This method requires ``run()`` to be running concurrently, e.g. in a separate
-    ///   task or as part of a `ServiceGroup`. If ``run()`` is not running, this method suspends
-    ///   until it is started and processes the envelope.
+    /// - Important: This method requires ``processEvents()`` to be running concurrently, either in a
+    ///   separate task or through the `Sentry` service in a `ServiceGroup`. If processing has not
+    ///   started yet, this method suspends until it starts and processes the envelope.
     ///
     /// - Returns: The event ID reported by Sentry, or `nil` if the response did not contain one.
-    /// - Throws: ``SwiftSentryError/dropped`` if the buffer is full,
+    /// - Throws: ``SwiftSentryError/dropped`` if the envelope was dropped because the buffer was full,
     ///   ``SwiftSentryError/sentryTerminated`` after ``finish()`` was called,
     ///   ``SwiftSentryError/rateLimited`` if the envelope was rate limited,
     ///   ``SwiftSentryError/otherServerError(status:)`` for other unsuccessful responses,
@@ -383,9 +394,9 @@ public final class Sentry: Sendable {
 
     /// Uploads the contents of an error log as a fatal event with the log attached, then empties the log.
     ///
-    /// - Important: This method requires ``run()`` to be running concurrently, e.g. in a separate
-    ///   task or as part of a `ServiceGroup`. If ``run()`` is not running, this method suspends
-    ///   until it is started and processes the event.
+    /// - Important: This method requires ``processEvents()`` to be running concurrently, either in a
+    ///   separate task or through the `Sentry` service in a `ServiceGroup`. If processing has not
+    ///   started yet, this method suspends until it starts and processes the event.
     ///
     /// The log is only emptied after the event was submitted successfully. If the file is missing,
     /// unreadable or contains only whitespace, nothing is sent.
@@ -408,7 +419,11 @@ public final class Sentry: Sendable {
             environment: self.guts.environment,
             message: .raw(message: String(content.prefix(100).prefix { !$0.isNewline })),
             exception: nil
-        ), attachments: [Attachment(data: Data(content.utf8), filename: path, contentType: "text/plain")])
+        ), attachments: [Attachment(
+            data: Data(content.utf8),
+            filename: URL(filePath: path).lastPathComponent,
+            contentType: "text/plain"
+        )])
         let uid = try await capture(envelope: envelope)
         // empty the error log (we don't want to send events twice)
         try "".write(toFile: path, atomically: true, encoding: .utf8)
@@ -420,6 +435,11 @@ public final class Sentry: Sendable {
 import ServiceLifecycle
 
 extension Sentry: Service {
+    /// Runs ``processEvents()`` and calls ``finish()`` on graceful shutdown, so queued envelopes
+    /// are submitted before the service returns.
+    ///
+    /// Place the `Sentry` instance first in the `ServiceGroup` so it shuts down after the services
+    /// that log through it.
     public func run() async throws {
         await withGracefulShutdownHandler {
             await self.processEvents()

@@ -1,0 +1,13 @@
+--hex-literal-case lowercase
+--ifdef no-indent
+--no-space-operators ...,..<
+--pattern-let inline
+--strip-unused-args closure-only
+--trailing-commas collections-only
+--wrap-collections before-first
+--wrap-arguments before-first
+--wrap-parameters before-first
+--conditional-assignment after-property
+--modifier-order override, isolated, nonisolated, nonisolated(unsafe), private, fileprivate, internal, package, public, open, private(set), fileprivate(set), internal(set), package(set), public(set), open(set), dynamic, mutating, nonmutating, lazy, final, required, convenience, typeMethods, owned
+--async-capturing XCTAssertAsyncNoThrow
+--disable preferKeyPath,redundantSendable,redundantSelf,redundantReturn

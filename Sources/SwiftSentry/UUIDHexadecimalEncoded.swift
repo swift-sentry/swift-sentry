@@ -7,6 +7,9 @@ extension UUID {
     }
 
     init?(fromHexadecimalEncodedString string: String) {
+        guard string.count == 32 else {
+            return nil
+        }
         var a = string.uppercased()
         a.insert("-", at: a.index(a.startIndex, offsetBy: 20))
         a.insert("-", at: a.index(a.startIndex, offsetBy: 16))

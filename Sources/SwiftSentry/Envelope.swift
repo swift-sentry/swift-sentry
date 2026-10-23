@@ -227,7 +227,7 @@ public struct Attachment: CustomStringConvertible, Sendable {
                 throw AttachmentError.noDataOrFilenameOrPath
             }
             self.filename = filename
-            path = tmep.dropLast().joined(separator: "/")
+            path = tmep.dropLast().map { $0 + "/" }.joined()
         }
 
         payload = .fromFile(path, self.filename!)
