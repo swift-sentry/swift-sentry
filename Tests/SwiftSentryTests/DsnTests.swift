@@ -3,7 +3,8 @@ import Foundation
 import Testing
 
 struct DsnTests {
-    @Test func parseMinimalHttpsDsn() throws {
+    @Test
+    func `parse minimal https dsn`() throws {
         let dsn = try Dsn(fromString: "https://public@sentry.example.com/42")
         #expect(dsn.scheme == "https")
         #expect(dsn.host == "sentry.example.com")
@@ -17,13 +18,15 @@ struct DsnTests {
         #expect(dsn.toString() == "https://public@sentry.example.com/42")
     }
 
-    @Test func parseHttpDsnDefaultsToPort80() throws {
+    @Test
+    func `parse http dsn defaults to port 80`() throws {
         let dsn = try Dsn(fromString: "http://public@localhost/1")
         #expect(dsn.port == 80)
         #expect(dsn.getEnvelopeApiEndpointUrl() == "http://localhost/api/1/envelope/")
     }
 
-    @Test func parseDsnWithSecretKeyAndCustomPort() throws {
+    @Test
+    func `parse dsn with secret key and custom port`() throws {
         let dsn = try Dsn(fromString: "http://public:secret@localhost:9000/7")
         #expect(dsn.publicKey == "public")
         #expect(dsn.secretKey == "secret")
@@ -32,20 +35,23 @@ struct DsnTests {
         #expect(dsn.toString() == "http://public:secret@localhost:9000/7")
     }
 
-    @Test func defaultPortIsOmittedEvenIfExplicit() throws {
+    @Test
+    func `default port is omitted even if explicit`() throws {
         let dsn = try Dsn(fromString: "https://public@sentry.example.com:443/3")
         #expect(dsn.getEnvelopeApiEndpointUrl() == "https://sentry.example.com/api/3/envelope/")
         #expect(dsn.toString() == "https://public@sentry.example.com/3")
     }
 
-    @Test func parseDsnWithPathPrefix() throws {
+    @Test
+    func `parse dsn with path prefix`() throws {
         let dsn = try Dsn(fromString: "https://public@sentry.example.com/prefix/sub/5")
         #expect(dsn.projectId == 5)
         #expect(dsn.getEnvelopeApiEndpointUrl() == "https://sentry.example.com/prefix/sub/api/5/envelope/")
         #expect(dsn.toString() == "https://public@sentry.example.com/prefix/sub/5")
     }
 
-    @Test func authHeader() throws {
+    @Test
+    func `auth header`() throws {
         let dsn = try Dsn(fromString: "https://public@sentry.example.com/42")
         let header = dsn.getAuthHeader()
         #expect(header.hasPrefix("Sentry sentry_version=7, "))
@@ -63,7 +69,7 @@ struct DsnTests {
         "https://public@sentry.example.com/abc", // non-numeric project id
         "https://public@sentry.example.com/-1", // negative project id
     ])
-    func invalidDsnThrows(_ value: String) {
+    func `invalid dsn throws`(_ value: String) {
         let error = #expect(throws: Sentry.SwiftSentryError.self) {
             try Dsn(fromString: value)
         }
@@ -73,7 +79,8 @@ struct DsnTests {
         }
     }
 
-    @Test func dsnWithoutProjectIdThrows() {
+    @Test
+    func `dsn without project id throws`() {
         let value = "https://public@sentry.example.com/"
         let error = #expect(throws: Sentry.SwiftSentryError.self) {
             try Dsn(fromString: value)

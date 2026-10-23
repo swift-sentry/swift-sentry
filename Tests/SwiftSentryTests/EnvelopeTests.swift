@@ -25,7 +25,8 @@ struct EnvelopeTests {
         try body(dir)
     }
 
-    @Test func envelopeWithoutAttachments() throws {
+    @Test
+    func `envelope without attachments`() throws {
         let envelope = Envelope(event: Event(event_id: eventUUID, message: .raw(message: "hi")))
         let lines = try writeLines(envelope, dsn: "https://public@sentry.example.com/1", sdk: "test-sdk")
         try #require(lines.count == 3)
@@ -46,7 +47,8 @@ struct EnvelopeTests {
         #expect(payload["message"] as? String == "hi")
     }
 
-    @Test func envelopeHeaderOmitsNilFields() throws {
+    @Test
+    func `envelope header omits nil fields`() throws {
         let data = try JSONEncoder().encode(EnvelopeHeader(eventId: nil, dsn: nil, sdk: nil))
         let header = try object(String(decoding: data, as: UTF8.self))
         #expect(Set(header.keys) == ["sent_at"])
@@ -54,7 +56,8 @@ struct EnvelopeTests {
         #expect(sentAt.wholeMatch(of: /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/) != nil, "\(sentAt)")
     }
 
-    @Test func envelopeWithDataAttachment() throws {
+    @Test
+    func `envelope with data attachment`() throws {
         let attachment = Attachment(data: Array("payload".utf8), filename: "log.txt", contentType: "text/plain")
         let envelope = Envelope(event: Event(event_id: eventUUID), attachments: [attachment])
         #expect(envelope.attachments?.count == 1)
@@ -69,7 +72,8 @@ struct EnvelopeTests {
         #expect(lines[4] == "payload")
     }
 
-    @Test func oversizedAttachmentIsSkipped() throws {
+    @Test
+    func `oversized attachment is skipped`() throws {
         let small = Attachment(data: Array("ok".utf8), filename: "small.txt")
         let large = Attachment(data: Array("too large".utf8), filename: "large.txt")
         let envelope = Envelope(event: Event(event_id: eventUUID), attachments: [large, small])
@@ -80,13 +84,15 @@ struct EnvelopeTests {
         #expect(lines[4] == "ok")
     }
 
-    @Test func unreadableAttachmentIsSkipped() throws {
+    @Test
+    func `unreadable attachment is skipped`() throws {
         let missing = Attachment(path: String?("/nonexistent-directory/"), filename: "missing.txt")
         let envelope = Envelope(event: Event(event_id: eventUUID), attachments: [missing])
         #expect(try writeLines(envelope).count == 3)
     }
 
-    @Test func attachmentFromDirectoryAndFilename() throws {
+    @Test
+    func `attachment from directory and filename`() throws {
         try withTemporaryDirectory { dir in
             try "from disk".write(to: dir.appendingPathComponent("file.txt"), atomically: true, encoding: .utf8)
 
@@ -98,7 +104,8 @@ struct EnvelopeTests {
         }
     }
 
-    @Test func attachmentInfersFilenameFromPath() throws {
+    @Test
+    func `attachment infers filename from path`() throws {
         try withTemporaryDirectory { dir in
             let file = dir.appendingPathComponent("inferred.txt")
             try "inferred".write(to: file, atomically: true, encoding: .utf8)
@@ -112,7 +119,8 @@ struct EnvelopeTests {
         }
     }
 
-    @Test func envelopeErrorDescription() {
+    @Test
+    func `envelope error description`() {
         #expect(EnvelopeError.envelopeToLarge(size: 12).description == "EnvelopeError.envelopeToLarge(size: 12)")
     }
 }

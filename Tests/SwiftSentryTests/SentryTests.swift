@@ -9,13 +9,15 @@ struct SentryTests {
         FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
     }
 
-    @Test func initRejectsInvalidDsn() {
+    @Test
+    func initRejectsInvalidDsn() {
         #expect(throws: Sentry.SwiftSentryError.self) {
             try Sentry(dsn: "not a dsn")
         }
     }
 
-    @Test func captureAfterFinishThrowsTerminated() async throws {
+    @Test
+    func captureAfterFinishThrowsTerminated() async throws {
         let sentry = try Sentry(dsn: dsn)
         sentry.finish()
         let error = await #expect(throws: Sentry.SwiftSentryError.self) {
@@ -27,7 +29,8 @@ struct SentryTests {
         }
     }
 
-    @Test func captureWithFullBufferThrowsDropped() async throws {
+    @Test
+    func captureWithFullBufferThrowsDropped() async throws {
         let sentry = try Sentry(dsn: dsn, bufferingPolicy: .bufferingOldest(1))
         sentry.send(envelope: Envelope(event: Event()))
         let error = await #expect(throws: Sentry.SwiftSentryError.self) {
@@ -39,19 +42,22 @@ struct SentryTests {
         }
     }
 
-    @Test func processEventsReturnsAfterFinish() async throws {
+    @Test
+    func processEventsReturnsAfterFinish() async throws {
         let sentry = try Sentry(dsn: dsn)
         sentry.finish()
         await sentry.processEvents()
     }
 
-    @Test func uploadStackTraceIgnoresMissingFile() async throws {
+    @Test
+    func uploadStackTraceIgnoresMissingFile() async throws {
         let sentry = try Sentry(dsn: dsn)
         sentry.finish()
         #expect(try await sentry.uploadStackTrace(path: temporaryPath()) == nil)
     }
 
-    @Test func uploadStackTraceIgnoresWhitespaceOnlyFile() async throws {
+    @Test
+    func uploadStackTraceIgnoresWhitespaceOnlyFile() async throws {
         let sentry = try Sentry(dsn: dsn)
         sentry.finish()
         let path = temporaryPath()
@@ -60,7 +66,8 @@ struct SentryTests {
         #expect(try await sentry.uploadStackTrace(path: path) == nil)
     }
 
-    @Test func uploadStackTraceKeepsLogWhenSubmissionFails() async throws {
+    @Test
+    func uploadStackTraceKeepsLogWhenSubmissionFails() async throws {
         let sentry = try Sentry(dsn: dsn)
         sentry.finish()
         let path = temporaryPath()
@@ -76,7 +83,8 @@ struct SentryTests {
         #expect(try String(contentsOfFile: path, encoding: .utf8) == "fatal error\nstack")
     }
 
-    @Test func bufferingPolicyMapping() {
+    @Test
+    func bufferingPolicyMapping() {
         func describe(_ policy: AsyncStream<Int>.Continuation.BufferingPolicy) -> String {
             switch policy {
             case .unbounded: "unbounded"

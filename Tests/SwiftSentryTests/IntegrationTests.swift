@@ -39,7 +39,8 @@ struct IntegrationTests {
         FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
     }
 
-    @Test func captureReturnsEventId() async throws {
+    @Test
+    func `capture returns event id`() async throws {
         let eventId = UUID()
         let returned = try await withSentry { sentry in
             try await sentry.capture(envelope: Envelope(event: Event(
@@ -51,7 +52,8 @@ struct IntegrationTests {
         #expect(returned == eventId)
     }
 
-    @Test func captureWithExceptionAndTags() async throws {
+    @Test
+    func `capture with exception and tags`() async throws {
         let eventId = UUID()
         let frame = Frame(
             filename: #fileID,
@@ -81,7 +83,8 @@ struct IntegrationTests {
         #expect(returned == eventId)
     }
 
-    @Test func captureWithAttachments() async throws {
+    @Test
+    func `capture with attachments`() async throws {
         let eventId = UUID()
         let envelope = Envelope(
             event: Event(event_id: eventId, level: .error, message: .raw(message: "integration test: \(#function)")),
@@ -96,7 +99,8 @@ struct IntegrationTests {
         #expect(returned == eventId)
     }
 
-    @Test func concurrentCapturesAllSucceed() async throws {
+    @Test
+    func `concurrent captures all succeed`() async throws {
         let eventIds = (0..<10).map { _ in UUID() }
         let returned = try await withSentry { sentry in
             try await withThrowingTaskGroup(of: UUID?.self) { group in
@@ -115,7 +119,8 @@ struct IntegrationTests {
         #expect(returned == Set(eventIds))
     }
 
-    @Test func uploadStackTraceSubmitsAndEmptiesLog() async throws {
+    @Test
+    func `upload stack trace submits and empties log`() async throws {
         let path = temporaryPath()
         try "Fatal error: integration test\nframe 0\nframe 1".write(toFile: path, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: path) }
@@ -127,7 +132,8 @@ struct IntegrationTests {
         #expect(try String(contentsOfFile: path, encoding: .utf8).isEmpty)
     }
 
-    @Test func unknownPublicKeyIsRejected() async throws {
+    @Test
+    func `unknown public key is rejected`() async throws {
         let dsn = try #require(integrationDsn.flatMap(URLComponents.init(string:)))
         var invalid = dsn
         invalid.user = UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
