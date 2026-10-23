@@ -45,7 +45,15 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftSentryTests",
-            dependencies: ["SwiftSentry"]
+            dependencies: [
+                "SwiftSentry",
+                .product(name: "Logging", package: "swift-log"),
+                .product(
+                    name: "ServiceLifecycle",
+                    package: "swift-service-lifecycle",
+                    condition: .when(traits: ["ServiceLifecycleSupport"])
+                ),
+            ]
         ),
     ],
     swiftLanguageModes: [

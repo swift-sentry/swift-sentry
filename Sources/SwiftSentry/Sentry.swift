@@ -48,7 +48,8 @@ struct SentryEmission {
     mutating func process(
         client: HTTPClient,
         dsn: Dsn,
-        maxAttachmentSize: Int
+        maxAttachmentSize: Int,
+        timeout: Duration
     ) async throws -> [Category: ContinuousClock.Instant] {
         var bytes = ByteBuffer()
         try envelope.write(
@@ -63,7 +64,7 @@ struct SentryEmission {
         request.headers.replaceOrAdd(name: "User-Agent", value: Sentry.VERSION)
         request.headers.replaceOrAdd(name: "X-Sentry-Auth", value: dsn.getAuthHeader())
         request.body = .bytes(bytes)
-        let response = try await client.execute(request, timeout: .seconds(60))
+        let response = try await client.execute(request, timeout: .init(timeout))
         let recv = ContinuousClock.now
         let rateLimitHeaders = response.headers["X-Sentry-Rate-Limits"]
         var rateLimits: [Category: ContinuousClock.Instant] = [:]
@@ -197,6 +198,7 @@ struct SentryGuts {
     let release: String?
     let environment: String?
     let rateLimits: RateLimits
+    let requestTimeout: Duration
 
     init(
         dsn: Dsn,
@@ -206,7 +208,8 @@ struct SentryGuts {
         environment: String?,
         maxAttachmentSize: Int,
         bufferingPolicy: AsyncStream<SentryEmission>.Continuation.BufferingPolicy,
-        maxInFlight: Int
+        maxInFlight: Int,
+        requestTimeout: Duration
     ) {
         self.dsn = dsn
         self.httpClient = httpClient
@@ -215,6 +218,7 @@ struct SentryGuts {
         self.environment = environment
         self.maxAttachmentSize = maxAttachmentSize
         self.rateLimits = .init(allowed: maxInFlight)
+        self.requestTimeout = requestTimeout
         (eventStream, cont) = AsyncStream.makeStream(bufferingPolicy: bufferingPolicy)
     }
 }
@@ -280,8 +284,9 @@ public final class Sentry: Sendable {
         release: String? = nil,
         environment: String? = nil,
         maxAttachmentSize: Int = Sentry.defaultMaxAttachmentSize,
-        bufferingPolicy: BufferingPolicy = .bufferingOldest(1000),
-        maxInFlight: Int = 2
+        bufferingPolicy: BufferingPolicy = .bufferingOldest(100),
+        maxInFlight: Int = 2,
+        requestTimeout: Duration = .seconds(15)
     ) throws {
         precondition(maxInFlight > 0)
         let dsn = try Dsn(fromString: dsn)
@@ -293,7 +298,8 @@ public final class Sentry: Sendable {
             environment: environment,
             maxAttachmentSize: maxAttachmentSize,
             bufferingPolicy: bufferingPolicy.streamPolicy(),
-            maxInFlight: maxInFlight
+            maxInFlight: maxInFlight,
+            requestTimeout: requestTimeout
         )
     }
 
@@ -339,7 +345,8 @@ public final class Sentry: Sendable {
             res = try await event.process(
                 client: self.guts.httpClient,
                 dsn: self.guts.dsn,
-                maxAttachmentSize: self.guts.maxAttachmentSize
+                maxAttachmentSize: self.guts.maxAttachmentSize,
+                timeout: self.guts.requestTimeout
             )
         } catch {
             event.cont.take()?.resume(throwing: error)
