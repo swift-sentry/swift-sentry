@@ -2,11 +2,25 @@ import Foundation
 @testable import SwiftSentry
 import Testing
 
+/// Rate limits every category, so processed envelopes are rejected with `rateLimited` without any
+/// network access.
+func rateLimitAllCategories(_ sentry: Sentry) async {
+    let until = ContinuousClock.now.advanced(by: .seconds(3600))
+    await sentry.guts.rateLimits.merge(new: Dictionary(uniqueKeysWithValues: Category.allCases.map { ($0, until) }))
+}
+
 struct SentryTests {
     private let dsn = "https://public@sentry.invalid/1"
 
     private func temporaryPath() -> String {
         FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+    }
+
+    private static func failure(_ result: Result<UUID?, any Error>?) -> Sentry.SwiftSentryError? {
+        guard case .failure(let error)? = result else {
+            return nil
+        }
+        return error as? Sentry.SwiftSentryError
     }
 
     @Test
@@ -39,6 +53,44 @@ struct SentryTests {
         guard case .dropped? = error else {
             Issue.record("Unexpected error \(String(describing: error))")
             return
+        }
+    }
+
+    /// With `bufferingNewest`, a full buffer evicts the *older* envelope. Its capture must fail with
+    /// `dropped`, while the newer one stays queued and is processed later. Regression test: the
+    /// newer capture used to be failed instead, leaking the evicted continuation and resuming the
+    /// newer one a second time once it was processed.
+    @Test(.timeLimit(.minutes(1)))
+    func captureEvictedByBufferingNewestThrowsDropped() async throws {
+        let sentry = try Sentry(dsn: dsn, bufferingPolicy: .bufferingNewest(1))
+        await rateLimitAllCategories(sentry)
+        await withTaskGroup(of: Result<UUID?, any Error>.self) { group in
+            for _ in 0..<2 {
+                group.addTask {
+                    do {
+                        return try await .success(sentry.capture(envelope: Envelope(event: Event())))
+                    } catch {
+                        return .failure(error)
+                    }
+                }
+            }
+
+            // Nothing is processed yet, so the only capture that can finish is the evicted one.
+            let evicted = await group.next()
+            guard case .dropped? = Self.failure(evicted) else {
+                Issue.record("Expected the evicted capture to be dropped, got \(String(describing: evicted))")
+                return
+            }
+
+            sentry.finish()
+            await sentry.processEvents()
+
+            // The kept capture reached processing, where the rate limit rejects it.
+            let kept = await group.next()
+            guard case .rateLimited? = Self.failure(kept) else {
+                Issue.record("Expected the kept capture to be processed, got \(String(describing: kept))")
+                return
+            }
         }
     }
 

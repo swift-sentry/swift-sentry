@@ -9,7 +9,7 @@ struct RateLimitTests {
     }
 
     @Test
-    func `parse limits with categories`() {
+    func parseLimitsWithCategories() {
         var limits: [Category: ContinuousClock.Instant] = [:]
         parseLimits(header: "60:error;transaction:key", into: &limits, recieveTime: now)
         #expect(limits == [
@@ -19,7 +19,7 @@ struct RateLimitTests {
     }
 
     @Test
-    func `parse limits without categories applies to all`() {
+    func parseLimitsWithoutCategoriesAppliesToAll() {
         var limits: [Category: ContinuousClock.Instant] = [:]
         parseLimits(header: "30::organization", into: &limits, recieveTime: now)
         #expect(limits.count == Category.allCases.count)
@@ -29,7 +29,7 @@ struct RateLimitTests {
     }
 
     @Test
-    func `parse limits keeps longest limit`() {
+    func parseLimitsKeepsLongestLimit() {
         var limits: [Category: ContinuousClock.Instant] = [.error: now.advanced(by: .seconds(500))]
         parseLimits(header: "60:error;default:key, 120:default:key", into: &limits, recieveTime: now)
         #expect(limits[.error] == now.advanced(by: .seconds(500)))
@@ -37,25 +37,25 @@ struct RateLimitTests {
     }
 
     @Test
-    func `parse limits ignores invalid entries and unknown categories`() {
+    func parseLimitsIgnoresInvalidEntriesAndUnknownCategories() {
         var limits: [Category: ContinuousClock.Instant] = [:]
         parseLimits(header: "abc:error, 60, 10:unknown;attachment:key,", into: &limits, recieveTime: now)
         #expect(limits == [.attachment: now.advanced(by: .seconds(10))])
     }
 
     @Test
-    func `emission allowed without limits`() {
+    func emissionAllowedWithoutLimits() {
         #expect(Self.emission().allowed(with: [:]))
     }
 
     @Test(arguments: [Category.error, .default])
-    func `emission blocked by error or default limit`(_ category: Category) {
+    func emissionBlockedByErrorOrDefaultLimit(_ category: Category) {
         let future = ContinuousClock.now.advanced(by: .seconds(60))
         #expect(!Self.emission().allowed(with: [category: future]))
     }
 
     @Test
-    func `emission not blocked by unrelated or expired limits`() {
+    func emissionNotBlockedByUnrelatedOrExpiredLimits() {
         let future = ContinuousClock.now.advanced(by: .seconds(60))
         let past = ContinuousClock.now.advanced(by: .seconds(-60))
         #expect(Self.emission().allowed(with: [.transaction: future, .attachment: future]))
@@ -63,7 +63,7 @@ struct RateLimitTests {
     }
 
     @Test
-    func `rate limits merge keeps latest`() async {
+    func rateLimitsMergeKeepsLatest() async {
         let rateLimits = RateLimits(perCategory: [.error: now.advanced(by: .seconds(100))], allowed: 1)
         await rateLimits.merge(new: [
             .error: now.advanced(by: .seconds(50)),
@@ -76,7 +76,7 @@ struct RateLimitTests {
     }
 
     @Test
-    func `rate limits counts in flight slots`() async throws {
+    func rateLimitsCountsInFlightSlots() async throws {
         let rateLimits = RateLimits(allowed: 2)
         try await rateLimits.allowed(Self.emission())
         try await rateLimits.allowed(Self.emission())
@@ -87,7 +87,7 @@ struct RateLimitTests {
     }
 
     @Test
-    func `rate limits waiter is resumed by end`() async throws {
+    func rateLimitsWaiterIsResumedByEnd() async throws {
         let rateLimits = RateLimits(allowed: 1)
         try await rateLimits.allowed(Self.emission())
 
@@ -103,7 +103,7 @@ struct RateLimitTests {
     }
 
     @Test
-    func `rate limits rejects limited event`() async {
+    func rateLimitsRejectsLimitedEvent() async {
         let rateLimits = RateLimits(perCategory: [.error: ContinuousClock.now.advanced(by: .seconds(60))], allowed: 1)
         let error = await #expect(throws: Sentry.SwiftSentryError.self) {
             try await rateLimits.allowed(Self.emission())

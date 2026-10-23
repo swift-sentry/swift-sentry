@@ -4,7 +4,7 @@ import Testing
 
 struct UUIDTests {
     @Test
-    func `uuid hexadecimal encoded`() throws {
+    func uuidHexadecimalEncoded() throws {
         struct TestEvent: Codable {
             var event_id: EventId
         }
@@ -31,7 +31,7 @@ struct UUIDTests {
         "7b8ec5c38f1d4f1196bc3c67a5d7f1d",
         "7b8ec5c38f1d4f1196bc3c67a5d7f1daa",
     ])
-    func `hexadecimal encoded string with wrong length is rejected`(_ value: String) {
+    func hexadecimalEncodedStringWithWrongLengthIsRejected(_ value: String) {
         #expect(UUID(fromHexadecimalEncodedString: value) == nil)
     }
 }

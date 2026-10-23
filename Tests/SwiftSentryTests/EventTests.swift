@@ -19,17 +19,17 @@ struct EventTests {
         (.error, .error),
         (.critical, .fatal),
     ])
-    func `level from logger level`(_ loggerLevel: Logger.Level, _ expected: Level) {
+    func levelFromLoggerLevel(_ loggerLevel: Logger.Level, _ expected: Level) {
         #expect(Level(from: loggerLevel) == expected)
     }
 
     @Test
-    func `raw message encodes as string`() throws {
+    func rawMessageEncodesAsString() throws {
         #expect(try json(Message.raw(message: "hello")) == "\"hello\"")
     }
 
     @Test
-    func `format message encodes as object`() throws {
+    func formatMessageEncodesAsObject() throws {
         #expect(
             try json(Message.format(message: "hello %s", params: ["world"]))
                 == #"{"message":"hello %s","params":["world"]}"#
@@ -40,7 +40,7 @@ struct EventTests {
         #""zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz""#, // non-hexadecimal
         #""abc""#, // too short
     ])
-    func `event id rejects invalid string`(_ json: String) {
+    func eventIdRejectsInvalidString(_ json: String) {
         let error = #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(EventId.self, from: Data(json.utf8))
         }
@@ -51,7 +51,7 @@ struct EventTests {
     }
 
     @Test
-    func `event encoding omits nil fields`() throws {
+    func eventEncodingOmitsNilFields() throws {
         let uuid = try #require(UUID(uuidString: "01234567-ABCD-AAAA-BBBB-ABCDEFABCDEF"))
         let event = Event(event_id: uuid, timestamp: 1_700_000_000, level: .error, message: .raw(message: "boom"))
         #expect(
@@ -61,7 +61,7 @@ struct EventTests {
     }
 
     @Test
-    func `event encoding with nested types`() throws {
+    func eventEncodingWithNestedTypes() throws {
         let uuid = try #require(UUID(uuidString: "01234567-ABCD-AAAA-BBBB-ABCDEFABCDEF"))
         let event = Event(
             event_id: uuid,
