@@ -84,6 +84,38 @@ stdout_logfile=/var/log/supervisor/%(program_name)-stdout.log
 stderr_logfile=/var/log/supervisor/%(program_name)-stderr.log
 ```
 
+## Running tests
+
+```sh
+swift test
+```
+
+### Integration tests
+The integration tests in `IntegrationTests.swift` send real envelopes to a Sentry-compatible server. They only run if the environment variable `SENTRY_INTEGRATION_DSN` contains a DSN; otherwise the suite is skipped. A dedicated variable is used instead of `SENTRY_DSN` so test events never reach a project that happens to be configured in your environment.
+
+`compose.yml` starts a local [GlitchTip](https://glitchtip.com) server, which implements the Sentry ingest protocol. It needs Docker (or Podman) with Compose.
+
+```sh
+# Start the server; returns once it is healthy (~15 s)
+docker compose up -d --wait
+
+# Look up the DSN of the bootstrapped project
+export SENTRY_INTEGRATION_DSN=$(curl -s \
+  -H "Authorization: Bearer $(printf 'd%.0s' {1..64})" \
+  http://localhost:8000/api/0/projects/org/project/keys/ | jq -r '.[0].dsn.public')
+
+swift test
+
+# Stop the server and discard its data
+docker compose down -v
+```
+
+The server keeps its data in memory only, so its DSN changes every time the containers are recreated. Look it up again after each `docker compose up`.
+
+To inspect the received events, log in at http://localhost:8000 with `test@example.com` / `admin_pass`. If port 8000 is already taken, start the server with `SENTRY_PORT=8001 docker compose up -d --wait` and use that port in the commands above.
+
+You can also point `SENTRY_INTEGRATION_DSN` at a real Sentry project. Use a project meant for testing, because every test run creates events there.
+
 # TODO
 - Capture stack traces for all logs (See [Vapor Stacktrace implementation](https://github.com/vapor/vapor/blob/73d57959a96ceca719558e70c320b2f729d2b25b/Sources/Vapor/Error/StackTrace.swift))
 - Additional repository `SentryVapor` to abtract logging with vapor requests. E.g. log hostnames, url, request-id
