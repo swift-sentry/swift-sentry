@@ -2,7 +2,6 @@ import AsyncHTTPClient
 import Foundation
 import NIO
 import NIOFoundationCompat
-import NIOHTTP1
 
 func parseLimits(
     header: String,
@@ -75,8 +74,9 @@ struct SentryEmission {
         }
         let body = try? await response.body.collect(upTo: 50)
         switch response.status {
-        case .tooManyRequests where rateLimits.isEmpty:
+        case .tooManyRequests:
             cont.take()?.resume(throwing: Sentry.SwiftSentryError.rateLimited)
+            guard rateLimits.isEmpty else { break }
             let retryAfter: Double
             if let retryAfterHeader = response.headers.first(name: "Retry-After") {
                 guard let val = Double(retryAfterHeader) else {
@@ -95,11 +95,11 @@ struct SentryEmission {
                 break
             }
             let dec = JSONDecoder()
-            let resp = try dec.decode(Sentry.SentryUUIDResponse.self, from: body)
-            let uuid = resp.id.flatMap { UUID(fromHexadecimalEncodedString: $0) }
+            let resp = try? dec.decode(Sentry.SentryUUIDResponse.self, from: body)
+            let uuid = resp?.id.flatMap { UUID(fromHexadecimalEncodedString: $0) }
             cont.take()?.resume(returning: uuid)
         default:
-            cont.take()?.resume(throwing: Sentry.SwiftSentryError.otherServerError(response.status))
+            cont.take()?.resume(throwing: Sentry.SwiftSentryError.otherServerError(status: response.status.code))
         }
         return rateLimits
     }
@@ -222,15 +222,13 @@ struct SentryGuts {
 }
 
 public final class Sentry: Sendable {
-    enum SwiftSentryError: Error {
+    public enum SwiftSentryError: Error {
         case sentryTerminated
+        case multipleStarts
         case dropped
         case unknownSubmissionError
         case rateLimited
-        case otherServerError(HTTPResponseStatus)
-        // case CantEncodeEvent
-        // case CantCreateRequest
-        case NoResponseBody(status: UInt)
+        case otherServerError(status: UInt)
         case InvalidArgumentException(_ msg: String)
     }
 
@@ -246,6 +244,12 @@ public final class Sentry: Sendable {
             case .bufferingOldest(let c): .bufferingOldest(c)
             }
         }
+    }
+
+    enum Running {
+        case service
+        case task(Task<Void, Never>)
+        case none
     }
 
     struct SentryUUIDResponse: Codable {
@@ -306,7 +310,7 @@ public final class Sentry: Sendable {
         self.guts.cont.finish()
     }
 
-    public func run() async throws {
+    public func run() async {
         await withDiscardingTaskGroup { grp in
             for await event in guts.eventStream {
                 do {
@@ -338,9 +342,34 @@ public final class Sentry: Sendable {
         await self.guts.rateLimits.end(new: res)
     }
 
+    /// Queues an envelope for submission to Sentry without waiting for the result.
+    ///
+    /// - Important: Envelopes are only submitted while ``run()`` is running, e.g. in a separate
+    ///   task or as part of a `ServiceGroup`. Envelopes sent before ``run()`` starts are buffered
+    ///   according to the configured ``BufferingPolicy``; envelopes sent after ``finish()`` are
+    ///   discarded.
+    ///
+    /// Failures, rate limiting and dropped envelopes are not reported. Use
+    /// ``capture(envelope:)`` to observe the outcome.
+    public func send(envelope: Envelope) {
+        self.guts.cont.yield(.init(envelope: envelope, cont: nil))
+    }
+
+    /// Queues an envelope for submission to Sentry and waits until it was processed.
+    ///
+    /// - Important: This method requires ``run()`` to be running concurrently, e.g. in a separate
+    ///   task or as part of a `ServiceGroup`. If ``run()`` is not running, this method suspends
+    ///   until it is started and processes the envelope.
+    ///
+    /// - Returns: The event ID reported by Sentry, or `nil` if the response did not contain one.
+    /// - Throws: ``SwiftSentryError/dropped`` if the buffer is full,
+    ///   ``SwiftSentryError/sentryTerminated`` after ``finish()`` was called,
+    ///   ``SwiftSentryError/rateLimited`` if the envelope was rate limited,
+    ///   ``SwiftSentryError/otherServerError(status:)`` for other unsuccessful responses,
+    ///   or any error raised while encoding or transmitting the envelope.
     @discardableResult
     public func capture(envelope: Envelope) async throws -> UUID? {
-        try await withCheckedThrowingContinuation { cont in
+        return try await withCheckedThrowingContinuation { cont in
             switch self.guts.cont.yield(.init(envelope: envelope, cont: cont)) {
             case .dropped: cont.resume(throwing: SwiftSentryError.dropped)
             case .enqueued: break
@@ -350,10 +379,19 @@ public final class Sentry: Sendable {
         }
     }
 
-    public func send(envelope: Envelope) {
-        self.guts.cont.yield(.init(envelope: envelope, cont: nil))
-    }
-
+    /// Uploads the contents of an error log as a fatal event with the log attached, then empties the log.
+    ///
+    /// - Important: This method requires ``run()`` to be running concurrently, e.g. in a separate
+    ///   task or as part of a `ServiceGroup`. If ``run()`` is not running, this method suspends
+    ///   until it is started and processes the event.
+    ///
+    /// The log is only emptied after the event was submitted successfully. If the file is missing,
+    /// unreadable or contains only whitespace, nothing is sent.
+    ///
+    /// - Returns: The event ID reported by Sentry, or `nil` if nothing was sent or the response
+    ///   did not contain one.
+    /// - Throws: The errors of ``capture(envelope:)``, or an error if the log could not be emptied.
+    @discardableResult
     public func uploadStackTrace(path: String) async throws -> UUID? {
         let content = try? String(contentsOfFile: path, encoding: .utf8)
             .trimming(while: { $0.isWhitespace || $0.isNewline })
@@ -375,3 +413,9 @@ public final class Sentry: Sendable {
         return uid
     }
 }
+
+#if ServiceLifecycleSupport
+import ServiceLifecycle
+
+extension Sentry: Service {}
+#endif
