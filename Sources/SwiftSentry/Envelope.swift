@@ -114,7 +114,7 @@ public struct Envelope: Sendable {
                     buffer.writeInteger(newLineByte)
                     buffer.writeData(bb)
                     guard buffer.writerIndex <= Sentry.maxEnvelopeUncompressedSize else {
-                        throw EnvelopeError.envelopeToLarge(size: 0)
+                        throw EnvelopeError.envelopeToLarge(size: buffer.writerIndex)
                     }
                 } catch {
                     buffer.moveWriterIndex(to: indexStart)

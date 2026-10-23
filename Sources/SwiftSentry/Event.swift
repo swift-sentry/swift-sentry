@@ -1,7 +1,7 @@
 import Foundation
 import Logging
 
-public struct EventId: RawRepresentable<UUID>, Codable, Sendable {
+public struct EventId: RawRepresentable<UUID>, Codable, Sendable, Equatable {
     public var rawValue: UUID
     public init(rawValue: UUID) {
         self.rawValue = rawValue

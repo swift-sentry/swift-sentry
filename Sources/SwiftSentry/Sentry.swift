@@ -1,34 +1,52 @@
 import AsyncHTTPClient
-import DequeModule
 import Foundation
 import NIO
 import NIOFoundationCompat
 import NIOHTTP1
-import Synchronization
 
-func parseLimits(header: String, into limits: inout [Category: ContinuousClock.Instant], recieveTime: ContinuousClock.Instant) {
-    for limit in header.split(separator: ",", omittingEmptySubsequences: false).map({ $0.trimming(while: { $0.isWhitespace }) }) {
-        let component = limit.split(separator: ":", omittingEmptySubsequences: false)
+func parseLimits(
+    header: String,
+    into limits: inout [Category: ContinuousClock.Instant],
+    recieveTime: ContinuousClock.Instant
+) {
+    for limit in header.split(
+        separator: ",",
+        omittingEmptySubsequences: false
+    ).map({ $0.trimming(while: { $0.isWhitespace }) }) {
+        let component = limit.split(
+            separator: ":",
+            omittingEmptySubsequences: false
+        )
         guard component.count >= 2, let retryAfter = Double(component[0]) else {
             continue
         }
         let categoriesComp = component[1]
         guard !categoriesComp.isEmpty else {
             for cat in Category.allCases {
-                limits[cat] = max(recieveTime.advanced(by: .seconds(retryAfter)), limits[cat, default: recieveTime])
+                limits[cat] = max(
+                    recieveTime.advanced(by: .seconds(retryAfter)),
+                    limits[cat, default: recieveTime]
+                )
             }
             continue
         }
-        for cat in categoriesComp.split(separator: ";", omittingEmptySubsequences: false).compactMap(Category.init) {
-            limits[cat] = max(recieveTime.advanced(by: .seconds(retryAfter)), limits[cat, default: recieveTime])
+        for cat in categoriesComp.split(
+            separator: ";",
+            omittingEmptySubsequences: false
+        ).compactMap(Category.init) {
+            limits[cat] = max(
+                recieveTime.advanced(by: .seconds(retryAfter)),
+                limits[cat, default: recieveTime]
+            )
         }
     }
 }
 
 struct SentryEmission {
     let envelope: Envelope
+    var cont: CheckedContinuation<UUID?, any Error>?
 
-    func process(
+    mutating func process(
         client: HTTPClient,
         dsn: Dsn,
         maxAttachmentSize: Int,
@@ -55,8 +73,10 @@ struct SentryEmission {
         for limitHeader in rateLimitHeaders {
             parseLimits(header: limitHeader, into: &rateLimits, recieveTime: recv)
         }
+        let body = try? await response.body.collect(upTo: 50)
         switch response.status {
         case .tooManyRequests where rateLimits.isEmpty:
+            cont.take()?.resume(throwing: Sentry.SwiftSentryError.rateLimited)
             let retryAfter: Double
             if let retryAfterHeader = response.headers.first(name: "Retry-After") {
                 guard let val = Double(retryAfterHeader) else {
@@ -70,13 +90,16 @@ struct SentryEmission {
                 rateLimits[cat] = recv.advanced(by: .seconds(retryAfter))
             }
         case let status where 200...299 ~= status.code:
-            break
-        // let dec = JSONDecoder()
-        // let bytes = try await response.body.collect(upTo: 50)
-        // let resp = try dec.decode(Sentry.SentryUUIDResponse.self, from: bytes)
-        // let uuid = resp.id.flatMap { UUID(fromHexadecimalEncodedString: $0) }
+            guard let body else {
+                cont.take()?.resume(returning: nil)
+                break
+            }
+            let dec = JSONDecoder()
+            let resp = try dec.decode(Sentry.SentryUUIDResponse.self, from: body)
+            let uuid = resp.id.flatMap { UUID(fromHexadecimalEncodedString: $0) }
+            cont.take()?.resume(returning: uuid)
         default:
-            break
+            cont.take()?.resume(throwing: Sentry.SwiftSentryError.otherServerError(response.status))
         }
         return rateLimits
     }
@@ -85,7 +108,9 @@ struct SentryEmission {
         if let ev = envelope.event {
             switch ev.cause.type {
             case .event:
-                guard limits[.error, default: .now] <= .now, limits[.default, default: .now] <= .now else {
+                guard limits[.error, default: .now] <= .now,
+                      limits[.default, default: .now] <= .now
+                else {
                     return false
                 }
 
@@ -112,16 +137,16 @@ enum Category: Substring, CaseIterable, Hashable {
 actor RateLimits {
     init(
         perCategory: [Category: ContinuousClock.Instant] = [:],
-        waiters: Deque<UnsafeContinuation<Void, Never>> = [],
+        waiter: UnsafeContinuation<Void, Never>? = nil,
         allowed: Int
     ) {
         self.perCategory = perCategory
-        self.waiters = waiters
+        self.waiter = waiter
         self.allowed = allowed
     }
 
     var perCategory: [Category: ContinuousClock.Instant] = [:]
-    var waiters: Deque<UnsafeContinuation<Void, Never>> = []
+    var waiter: UnsafeContinuation<Void, Never>?
     var allowed: Int
 
     func merge(new limits: [Category: ContinuousClock.Instant]) {
@@ -142,8 +167,9 @@ actor RateLimits {
             allowed -= 1
             return
         }
+        assert(waiter == nil)
         await withUnsafeContinuation {
-            waiters.append($0)
+            waiter = $0
         }
         guard event.allowed(with: perCategory) else {
             end()
@@ -155,7 +181,7 @@ actor RateLimits {
         if let limits {
             merge(new: limits)
         }
-        if let w = waiters.popFirst() {
+        if let w = waiter.take() {
             w.resume()
         } else {
             allowed += 1
@@ -197,8 +223,11 @@ struct SentryGuts {
 
 public final class Sentry: Sendable {
     enum SwiftSentryError: Error {
+        case sentryTerminated
+        case dropped
+        case unknownSubmissionError
         case rateLimited
-        case otherFailure(HTTPResponseStatus)
+        case otherServerError(HTTPResponseStatus)
         // case CantEncodeEvent
         // case CantCreateRequest
         case NoResponseBody(status: UInt)
@@ -259,6 +288,7 @@ public final class Sentry: Sendable {
         bufferingPolicy: BufferingPolicy = .bufferingOldest(1000),
         maxInFlight: Int = 2
     ) throws {
+        precondition(maxInFlight > 0)
         let dsn = try Dsn(fromString: dsn)
         self.guts = .init(
             dsn: dsn,
@@ -272,13 +302,19 @@ public final class Sentry: Sendable {
         )
     }
 
-    // public func shutdown() async throws {
-    //     try await self.guts.httpClient.shutdown()
-    // }
+    public func finish() {
+        self.guts.cont.finish()
+    }
 
     public func run() async throws {
         await withDiscardingTaskGroup { grp in
             for await event in guts.eventStream {
+                do {
+                    try await self.guts.rateLimits.allowed(event)
+                } catch {
+                    event.cont?.resume(throwing: error)
+                    continue
+                }
                 grp.addTask {
                     await self.process(event)
                 }
@@ -286,12 +322,7 @@ public final class Sentry: Sendable {
         }
     }
 
-    func process(_ event: SentryEmission) async {
-        do {
-            try await self.guts.rateLimits.allowed(event)
-        } catch {
-            return
-        }
+    func process(_ event: consuming SentryEmission) async {
         let res: [Category: ContinuousClock.Instant]?
         do {
             res = try await event.process(
@@ -301,31 +332,34 @@ public final class Sentry: Sendable {
                 sdk: nil
             )
         } catch {
+            event.cont.take()?.resume(throwing: error)
             res = nil
         }
         await self.guts.rateLimits.end(new: res)
     }
 
-    // @discardableResult
-    // public func capture(envelope: Envelope) async throws -> UUID? {
-    //     try await withCheckedThrowingContinuation { cont in
-    //         self.guts.cont.yield(.init(envelope: envelope, cont: cont))
-    //     }
-    // }
-
-    public func send(envelope: Envelope) {
-        self.guts.cont.yield(.init(envelope: envelope))
+    @discardableResult
+    public func capture(envelope: Envelope) async throws -> UUID? {
+        try await withCheckedThrowingContinuation { cont in
+            switch self.guts.cont.yield(.init(envelope: envelope, cont: cont)) {
+            case .dropped: cont.resume(throwing: SwiftSentryError.dropped)
+            case .enqueued: break
+            case .terminated: cont.resume(throwing: SwiftSentryError.sentryTerminated)
+            @unknown default: cont.resume(throwing: SwiftSentryError.unknownSubmissionError)
+            }
+        }
     }
 
-    public func uploadStackTrace(path: String) throws {
+    public func send(envelope: Envelope) {
+        self.guts.cont.yield(.init(envelope: envelope, cont: nil))
+    }
+
+    public func uploadStackTrace(path: String) async throws -> UUID? {
         let content = try? String(contentsOfFile: path, encoding: .utf8)
             .trimming(while: { $0.isWhitespace || $0.isNewline })
         guard let content, !content.isEmpty else {
-            return
+            return nil
         }
-
-        // empty the error log (we don't want to send events twice)
-        try "".write(toFile: path, atomically: true, encoding: .utf8)
 
         let envelope = Envelope(event: .init(
             level: .fatal,
@@ -335,6 +369,9 @@ public final class Sentry: Sendable {
             message: nil,
             exception: nil
         ), attachments: [Attachment(data: Data(content.utf8), filename: path, contentType: "text/plain")])
-        send(envelope: envelope)
+        let uid = try await capture(envelope: envelope)
+        // empty the error log (we don't want to send events twice)
+        try "".write(toFile: path, atomically: true, encoding: .utf8)
+        return uid
     }
 }
