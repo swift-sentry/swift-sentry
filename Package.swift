@@ -1,7 +1,17 @@
-// swift-tools-version:6.1
+// swift-tools-version:6.2
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
+
+let swiftSettings: [SwiftSetting] = [
+    .enableUpcomingFeature("InferIsolatedConformances"),
+    .enableUpcomingFeature("ImmutableWeakCaptures"),
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("FullTypedThrows"),
+    .enableUpcomingFeature("ExistentialAny"),
+    .enableUpcomingFeature("InternalImportsByDefault"),
+    .enableUpcomingFeature("MemberImportVisibility"),
+]
 
 let package = Package(
     name: "SwiftSentry",
@@ -26,6 +36,7 @@ let package = Package(
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.9.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
         .package(url: "https://github.com/swift-server/swift-service-lifecycle.git", from: "2.8.0"),
+        .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.2.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -35,13 +46,17 @@ let package = Package(
             dependencies: [
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "Algorithms", package: "swift-algorithms"),
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(
                     name: "ServiceLifecycle",
                     package: "swift-service-lifecycle",
                     condition: .when(traits: ["ServiceLifecycleSupport"])
                 ),
-            ]
+            ],
+            swiftSettings: swiftSettings
         ),
         .testTarget(
             name: "SwiftSentryTests",
@@ -53,7 +68,8 @@ let package = Package(
                     package: "swift-service-lifecycle",
                     condition: .when(traits: ["ServiceLifecycleSupport"])
                 ),
-            ]
+            ],
+            swiftSettings: swiftSettings
         ),
     ],
     swiftLanguageModes: [

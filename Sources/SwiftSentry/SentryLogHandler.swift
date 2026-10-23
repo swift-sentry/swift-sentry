@@ -1,5 +1,9 @@
+public import Logging
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
-import Logging
+#endif
 
 public struct SentryLogHandler: LogHandler, Sendable {
     private let label: String

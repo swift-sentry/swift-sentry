@@ -1,5 +1,9 @@
-import Foundation
-import Logging
+#if canImport(FoundationEssentials)
+public import FoundationEssentials
+#else
+public import Foundation
+#endif
+public import Logging
 
 public struct EventId: RawRepresentable<UUID>, Codable, Sendable, Equatable {
     public var rawValue: UUID
@@ -7,7 +11,7 @@ public struct EventId: RawRepresentable<UUID>, Codable, Sendable, Equatable {
         self.rawValue = rawValue
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
         guard let id = try UUID(fromHexadecimalEncodedString: container.decode(String.self)) else {
             throw DecodingError.typeMismatch(EventId.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected UUID in hexadecimal format"))
@@ -15,7 +19,7 @@ public struct EventId: RawRepresentable<UUID>, Codable, Sendable, Equatable {
         self.rawValue = id
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(self.rawValue.hexadecimalEncoded)
     }
@@ -137,7 +141,7 @@ public enum Message: Encodable, Sendable {
     case raw(message: String)
     case format(message: String, params: [String])
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         switch self {
         case .raw(let message):
             var container = encoder.singleValueContainer()

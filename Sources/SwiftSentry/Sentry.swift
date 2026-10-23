@@ -1,7 +1,9 @@
-import AsyncHTTPClient
-import Foundation
-import NIO
+public import AsyncHTTPClient
+public import Foundation
+import Algorithms
+import NIOCore
 import NIOFoundationCompat
+import NIOHTTP1
 
 func parseLimits(
     header: String,
@@ -94,7 +96,7 @@ struct SentryEmission {
                 break
             }
             let dec = JSONDecoder()
-            let resp = try? dec.decode(Sentry.SentryUUIDResponse.self, from: body)
+            let resp = try? dec.decode(Sentry.UUIDResponse.self, from: body)
             let uuid = resp?.id.flatMap { UUID(fromHexadecimalEncodedString: $0) }
             cont.take()?.resume(returning: uuid)
         default:
@@ -247,7 +249,7 @@ public final class Sentry: Sendable {
         }
     }
 
-    struct SentryUUIDResponse: Codable {
+    struct UUIDResponse: Codable {
         var id: String?
     }
 
@@ -323,6 +325,7 @@ public final class Sentry: Sendable {
     ///
     /// - Important: Call this method only once per instance, and not in addition to running the
     ///   instance as a `Service`. A second concurrent call traps.
+    @concurrent
     public func processEvents() async {
         await withDiscardingTaskGroup { grp in
             for await event in guts.eventStream {
@@ -436,7 +439,7 @@ public final class Sentry: Sendable {
 }
 
 #if ServiceLifecycleSupport
-import ServiceLifecycle
+public import ServiceLifecycle
 
 extension Sentry: Service {
     /// Runs ``processEvents()`` and calls ``finish()`` on graceful shutdown, so queued envelopes

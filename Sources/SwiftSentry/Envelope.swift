@@ -1,11 +1,6 @@
-import Foundation
+public import Foundation
 import NIOCore
-
-public enum EnvelopeItemType: String, Sendable, Codable {
-    case event
-    case transaction
-    case attachment
-}
+import NIOFoundationCompat
 
 public struct EnvelopeError: Error, Equatable, CustomStringConvertible {
     enum Err: Error, Equatable {
@@ -26,6 +21,12 @@ public struct EnvelopeError: Error, Equatable, CustomStringConvertible {
 }
 
 public struct Envelope: Sendable {
+    public enum ItemType: String, Sendable, Codable {
+        case event
+        case transaction
+        case attachment
+    }
+
     struct EventInfo: Sendable {
         enum Cause: Sendable {
             case event(Event)
@@ -40,7 +41,7 @@ public struct Envelope: Sendable {
                 }
             }
 
-            var type: EnvelopeItemType {
+            var type: ItemType {
                 switch self {
                 case .event:
                     .event
@@ -90,7 +91,7 @@ public struct Envelope: Sendable {
         try encoder.encode(self.header(dsn: dsn), into: &buffer)
         if let event {
             let bb = try event.cause.encode(using: encoder)
-            let ih = EnvelopeItemHeader(type: event.cause.type, length: bb.count, filename: nil, contentType: nil)
+            let ih = ItemHeader(type: event.cause.type, length: bb.count, filename: nil, contentType: nil)
             buffer.writeInteger(newLineByte)
             try encoder.encode(ih, into: &buffer)
             buffer.writeInteger(newLineByte)
@@ -102,7 +103,7 @@ public struct Envelope: Sendable {
                     guard bb.count <= maxAttachmentSize else {
                         continue
                     }
-                    let ah = EnvelopeItemHeader(
+                    let ah = ItemHeader(
                         type: .attachment,
                         length: bb.count,
                         filename: attachment.filename,
@@ -151,7 +152,7 @@ public struct EnvelopeHeader: Encodable, Sendable {
         case sentAt = "sent_at"
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         if let eventId {
             try container.encode(eventId, forKey: CodingKeys.eventId)
@@ -163,24 +164,26 @@ public struct EnvelopeHeader: Encodable, Sendable {
     }
 }
 
-public struct EnvelopeItemHeader: Codable, Sendable {
-    let type: EnvelopeItemType
-    fileprivate var length: Int
-    fileprivate let filename: String?
-    fileprivate let contentType: String?
+extension Envelope {
+    struct ItemHeader: Codable, Sendable {
+        let type: ItemType
+        fileprivate var length: Int
+        fileprivate let filename: String?
+        fileprivate let contentType: String?
 
-    public init(type: EnvelopeItemType = .event, length: Int = 0, filename: String?, contentType: String?) {
-        self.type = type
-        self.length = length
-        self.filename = filename
-        self.contentType = contentType
-    }
+        init(type: ItemType = .event, length: Int = 0, filename: String?, contentType: String?) {
+            self.type = type
+            self.length = length
+            self.filename = filename
+            self.contentType = contentType
+        }
 
-    private enum CodingKeys: String, CodingKey {
-        case type
-        case length
-        case filename
-        case contentType = "content_type"
+        private enum CodingKeys: String, CodingKey {
+            case type
+            case length
+            case filename
+            case contentType = "content_type"
+        }
     }
 }
 
