@@ -77,18 +77,17 @@ public struct Envelope: Sendable {
         self.event = .init(cause: .event(event), attachments: attachments)
     }
 
-    func header(dsn: String?, sdk: String?) -> EnvelopeHeader {
-        return EnvelopeHeader(eventId: event?.cause.id, dsn: dsn, sdk: sdk)
+    func header(dsn: String?) -> EnvelopeHeader {
+        return EnvelopeHeader(eventId: event?.cause.id, dsn: dsn)
     }
 
     func write(
         into buffer: inout ByteBuffer,
         encoder: JSONEncoder,
         maxAttachmentSize: Int = Sentry.defaultMaxAttachmentSize,
-        dsn: String? = nil,
-        sdk: String? = nil
+        dsn: String? = nil
     ) throws {
-        try encoder.encode(self.header(dsn: dsn, sdk: sdk), into: &buffer)
+        try encoder.encode(self.header(dsn: dsn), into: &buffer)
         if let event {
             let bb = try event.cause.encode(using: encoder)
             let ih = EnvelopeItemHeader(type: event.cause.type, length: bb.count, filename: nil, contentType: nil)
@@ -140,18 +139,15 @@ public struct EnvelopeHeader: Encodable, Sendable {
 
     fileprivate let eventId: EventId?
     private let dsn: String?
-    private let sdk: String?
 
-    public init(eventId: UUID?, dsn: String?, sdk: String?) {
+    public init(eventId: UUID?, dsn: String?) {
         self.eventId = eventId.map(EventId.init)
         self.dsn = dsn
-        self.sdk = sdk
     }
 
     private enum CodingKeys: String, CodingKey {
         case eventId = "event_id"
         case dsn
-        case sdk
         case sentAt = "sent_at"
     }
 
@@ -162,9 +158,6 @@ public struct EnvelopeHeader: Encodable, Sendable {
         }
         if let dsn {
             try container.encode(dsn, forKey: CodingKeys.dsn)
-        }
-        if let sdk {
-            try container.encode(sdk, forKey: CodingKeys.sdk)
         }
         try container.encode(EnvelopeHeader.RFC3339DateFormatter.string(from: Date()), forKey: CodingKeys.sentAt)
     }
@@ -235,9 +228,9 @@ public struct Attachment: CustomStringConvertible, Sendable {
     }
 
     /// Contructs an Attachment from a file on disk, without inferring the filename
-    public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
+    public init(directory: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
-        payload = .fromFile(path, filename)
+        payload = .fromFile(directory, filename)
         self.contentType = contentType
     }
 
@@ -248,7 +241,7 @@ public struct Attachment: CustomStringConvertible, Sendable {
             switch self {
             case .fromFile(let path, let filename):
                 do {
-                    return try Data(contentsOf: URL(fileURLWithPath: (path ?? "") + filename))
+                    return try Data(contentsOf: URL(filePath: "\(path, default: "")/\(filename)"))
                 } catch {
                     throw AttachmentError.fileReadFailed
                 }

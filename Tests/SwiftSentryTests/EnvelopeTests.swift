@@ -7,9 +7,13 @@ struct EnvelopeTests {
     private let eventUUID = UUID(uuidString: "01234567-ABCD-AAAA-BBBB-ABCDEFABCDEF")!
 
     /// Writes the envelope and splits it into its newline separated lines.
-    private func writeLines(_ envelope: Envelope, maxAttachmentSize: Int = Sentry.defaultMaxAttachmentSize, dsn: String? = nil, sdk: String? = nil) throws -> [String] {
+    private func writeLines(
+        _ envelope: Envelope,
+        maxAttachmentSize: Int = Sentry.defaultMaxAttachmentSize,
+        dsn: String? = nil
+    ) throws -> [String] {
         var buffer = ByteBuffer()
-        try envelope.write(into: &buffer, encoder: JSONEncoder(), maxAttachmentSize: maxAttachmentSize, dsn: dsn, sdk: sdk)
+        try envelope.write(into: &buffer, encoder: JSONEncoder(), maxAttachmentSize: maxAttachmentSize, dsn: dsn)
         return String(buffer: buffer).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
 
@@ -28,13 +32,12 @@ struct EnvelopeTests {
     @Test
     func `envelope without attachments`() throws {
         let envelope = Envelope(event: Event(event_id: eventUUID, message: .raw(message: "hi")))
-        let lines = try writeLines(envelope, dsn: "https://public@sentry.example.com/1", sdk: "test-sdk")
+        let lines = try writeLines(envelope, dsn: "https://public@sentry.example.com/1")
         try #require(lines.count == 3)
 
         let header = try object(lines[0])
         #expect(header["event_id"] as? String == "01234567abcdaaaabbbbabcdefabcdef")
         #expect(header["dsn"] as? String == "https://public@sentry.example.com/1")
-        #expect(header["sdk"] as? String == "test-sdk")
         #expect(header["sent_at"] is String)
 
         let itemHeader = try object(lines[1])
@@ -49,8 +52,8 @@ struct EnvelopeTests {
 
     @Test
     func `envelope header omits nil fields`() throws {
-        let data = try JSONEncoder().encode(EnvelopeHeader(eventId: nil, dsn: nil, sdk: nil))
-        let header = try object(String(decoding: data, as: UTF8.self))
+        let data = try JSONEncoder().encode(EnvelopeHeader(eventId: nil, dsn: nil))
+        let header = try object(#require(String(bytes: data, encoding: .utf8)))
         #expect(Set(header.keys) == ["sent_at"])
         let sentAt = try #require(header["sent_at"] as? String)
         #expect(sentAt.wholeMatch(of: /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/) != nil, "\(sentAt)")
@@ -86,7 +89,7 @@ struct EnvelopeTests {
 
     @Test
     func `unreadable attachment is skipped`() throws {
-        let missing = Attachment(path: String?("/nonexistent-directory/"), filename: "missing.txt")
+        let missing = Attachment(directory: "/nonexistent-directory/", filename: "missing.txt")
         let envelope = Envelope(event: Event(event_id: eventUUID), attachments: [missing])
         #expect(try writeLines(envelope).count == 3)
     }
@@ -96,7 +99,7 @@ struct EnvelopeTests {
         try withTemporaryDirectory { dir in
             try "from disk".write(to: dir.appendingPathComponent("file.txt"), atomically: true, encoding: .utf8)
 
-            let attachment = Attachment(path: String?(dir.path + "/"), filename: "file.txt")
+            let attachment = Attachment(directory: dir.path + "/", filename: "file.txt")
             #expect(attachment.description == "Attachment: file.txt")
             let lines = try writeLines(Envelope(event: Event(event_id: eventUUID), attachments: [attachment]))
             try #require(lines.count == 5)

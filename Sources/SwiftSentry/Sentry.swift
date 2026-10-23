@@ -48,16 +48,14 @@ struct SentryEmission {
     mutating func process(
         client: HTTPClient,
         dsn: Dsn,
-        maxAttachmentSize: Int,
-        sdk: String?
+        maxAttachmentSize: Int
     ) async throws -> [Category: ContinuousClock.Instant] {
         var bytes = ByteBuffer()
         try envelope.write(
             into: &bytes,
             encoder: JSONEncoder(),
             maxAttachmentSize: maxAttachmentSize,
-            dsn: nil,
-            sdk: sdk
+            dsn: nil
         )
         var request = HTTPClientRequest(url: dsn.getEnvelopeApiEndpointUrl())
         request.method = .POST
@@ -341,8 +339,7 @@ public final class Sentry: Sendable {
             res = try await event.process(
                 client: self.guts.httpClient,
                 dsn: self.guts.dsn,
-                maxAttachmentSize: self.guts.maxAttachmentSize,
-                sdk: nil
+                maxAttachmentSize: self.guts.maxAttachmentSize
             )
         } catch {
             event.cont.take()?.resume(throwing: error)
