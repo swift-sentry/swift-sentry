@@ -55,7 +55,7 @@ public struct SentryLogHandler: LogHandler, Sendable {
         if let error = event.error {
             expections.append(ExceptionDataBag(
                 type: String(describing: type(of: error)),
-                value: error.localizedDescription,
+                value: String(describing: error),
                 stacktrace: nil
             ))
         }

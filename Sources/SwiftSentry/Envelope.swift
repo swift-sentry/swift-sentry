@@ -99,20 +99,23 @@ public struct Envelope: Sendable {
             for attachment in event.attachments {
                 let indexStart = buffer.writerIndex
                 do {
-                    let bb: Data
-                    fits: do {
-                        let dd = try? attachment.payload.dump()
-                        guard let dd, dd.count <= maxAttachmentSize else {
-                            bb = .init()
-                            break fits
-                        }
-                        bb = dd
+                    let bb: Data = try attachment.payload.dump()
+                    guard bb.count <= maxAttachmentSize else {
+                        continue
                     }
-                    let ah = EnvelopeItemHeader(type: .attachment, length: bb.count, filename: attachment.filename, contentType: attachment.contentType)
+                    let ah = EnvelopeItemHeader(
+                        type: .attachment,
+                        length: bb.count,
+                        filename: attachment.filename,
+                        contentType: attachment.contentType
+                    )
                     buffer.writeInteger(newLineByte)
                     try encoder.encode(ah, into: &buffer)
                     buffer.writeInteger(newLineByte)
                     buffer.writeData(bb)
+                    guard buffer.writerIndex <= Sentry.maxEnvelopeUncompressedSize else {
+                        throw EnvelopeError.envelopeToLarge(size: 0)
+                    }
                 } catch {
                     buffer.moveWriterIndex(to: indexStart)
                 }
@@ -135,12 +138,12 @@ public struct EnvelopeHeader: Encodable, Sendable {
         return dateFormatter
     }()
 
-    fileprivate let eventId: UUID?
+    fileprivate let eventId: EventId?
     private let dsn: String?
     private let sdk: String?
 
     public init(eventId: UUID?, dsn: String?, sdk: String?) {
-        self.eventId = eventId
+        self.eventId = eventId.map(EventId.init)
         self.dsn = dsn
         self.sdk = sdk
     }
