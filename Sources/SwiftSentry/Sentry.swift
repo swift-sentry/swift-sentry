@@ -224,7 +224,6 @@ struct SentryGuts {
 public final class Sentry: Sendable {
     public enum SwiftSentryError: Error {
         case sentryTerminated
-        case multipleStarts
         case dropped
         case unknownSubmissionError
         case rateLimited
@@ -310,7 +309,7 @@ public final class Sentry: Sendable {
         self.guts.cont.finish()
     }
 
-    public func run() async {
+    public func processEvents() async {
         await withDiscardingTaskGroup { grp in
             for await event in guts.eventStream {
                 do {
@@ -352,7 +351,10 @@ public final class Sentry: Sendable {
     /// Failures, rate limiting and dropped envelopes are not reported. Use
     /// ``capture(envelope:)`` to observe the outcome.
     public func send(envelope: Envelope) {
-        self.guts.cont.yield(.init(envelope: envelope, cont: nil))
+        switch self.guts.cont.yield(.init(envelope: envelope, cont: nil)) {
+        case .dropped(let dropped): dropped.cont?.resume(throwing: SwiftSentryError.dropped)
+        default: break
+        }
     }
 
     /// Queues an envelope for submission to Sentry and waits until it was processed.
@@ -371,7 +373,7 @@ public final class Sentry: Sendable {
     public func capture(envelope: Envelope) async throws -> UUID? {
         return try await withCheckedThrowingContinuation { cont in
             switch self.guts.cont.yield(.init(envelope: envelope, cont: cont)) {
-            case .dropped: cont.resume(throwing: SwiftSentryError.dropped)
+            case .dropped(let dropped): dropped.cont?.resume(throwing: SwiftSentryError.dropped)
             case .enqueued: break
             case .terminated: cont.resume(throwing: SwiftSentryError.sentryTerminated)
             @unknown default: cont.resume(throwing: SwiftSentryError.unknownSubmissionError)
@@ -404,7 +406,7 @@ public final class Sentry: Sendable {
             server_name: self.guts.servername,
             release: self.guts.release,
             environment: self.guts.environment,
-            message: nil,
+            message: .raw(message: String(content.prefix(100).prefix { !$0.isNewline })),
             exception: nil
         ), attachments: [Attachment(data: Data(content.utf8), filename: path, contentType: "text/plain")])
         let uid = try await capture(envelope: envelope)
@@ -417,5 +419,13 @@ public final class Sentry: Sendable {
 #if ServiceLifecycleSupport
 import ServiceLifecycle
 
-extension Sentry: Service {}
+extension Sentry: Service {
+    public func run() async throws {
+        await withGracefulShutdownHandler {
+            await self.processEvents()
+        } onGracefulShutdown: {
+            self.finish()
+        }
+    }
+}
 #endif
