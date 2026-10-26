@@ -151,13 +151,7 @@ actor RateLimits {
     var allowed: Int
 
     func merge(new limits: [Category: ContinuousClock.Instant]) {
-        for (cat, until) in limits {
-            guard let curLim = perCategory[cat] else {
-                perCategory[cat] = until
-                continue
-            }
-            perCategory[cat] = max(until, curLim)
-        }
+        perCategory.merge(limits, uniquingKeysWith: max)
     }
 
     func allowed(_ event: SentryEmission) async throws(Sentry.SwiftSentryError) {
@@ -290,7 +284,7 @@ public final class Sentry: Sendable {
         maxInFlight: Int = 2,
         requestTimeout: Duration = .seconds(15)
     ) throws {
-        precondition(maxInFlight > 0)
+        assert(maxInFlight > 0)
         let dsn = try Dsn(fromString: dsn)
         self.guts = .init(
             dsn: dsn,

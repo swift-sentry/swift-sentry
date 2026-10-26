@@ -113,7 +113,7 @@ struct EnvelopeTests {
             let file = dir.appendingPathComponent("inferred.txt")
             try "inferred".write(to: file, atomically: true, encoding: .utf8)
 
-            let attachment = try Attachment(path: file.path)
+            let attachment = Attachment(path: file.path)
             #expect(attachment.description == "Attachment: inferred.txt")
             let lines = try writeLines(Envelope(event: Event(event_id: eventUUID), attachments: [attachment]))
             try #require(lines.count == 5, "Attachment was not written")

@@ -194,9 +194,6 @@ extension Envelope {
 
 public struct Attachment: CustomStringConvertible, Sendable {
     public enum AttachmentError: Error {
-        /// This error shouldn't be able to be thrown, but it prevents an
-        /// forceful unwrapping from crashing the application
-        case noDataOrFilenameOrPath
         /// Error in case the File on Disk of the Attachment couldn't be reaad for some reason
         case fileReadFailed
     }
@@ -218,38 +215,29 @@ public struct Attachment: CustomStringConvertible, Sendable {
 
     /// Constructs an Attachment from a file on disk, if no filename is given, one gets
     /// inferred from path
-    public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) throws {
-        var path = path
-        if let filename {
-            self.filename = filename
-        } else {
-            let tmep = path.components(separatedBy: "/")
-            guard let filename = tmep.last else {
-                throw AttachmentError.noDataOrFilenameOrPath
-            }
-            self.filename = filename
-            path = tmep.dropLast().map { $0 + "/" }.joined()
-        }
-
-        payload = .fromFile(path, self.filename!)
+    public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) {
+        let url = URL(filePath: path)
+        self.filename = filename ?? url.lastPathComponent
+        payload = .fromFile(url)
         self.contentType = contentType
     }
 
     /// Contructs an Attachment from a file on disk, without inferring the filename
     public init(directory: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
-        payload = .fromFile(directory, filename)
+        let url = URL(filePath: directory ?? ".").appending(path: filename)
+        payload = .fromFile(url)
         self.contentType = contentType
     }
 
     public enum AttachmentPayload: Sendable {
         case fromPayload(any Sequence<UInt8> & Sendable)
-        case fromFile(String?, String)
+        case fromFile(URL)
         public func dump() throws -> Data {
             switch self {
-            case .fromFile(let path, let filename):
+            case .fromFile(let path):
                 do {
-                    return try Data(contentsOf: URL(filePath: "\(path, default: "")/\(filename)"))
+                    return try Data(contentsOf: path)
                 } catch {
                     throw AttachmentError.fileReadFailed
                 }
