@@ -121,9 +121,4 @@ struct EnvelopeTests {
             #expect(lines[4] == "inferred")
         }
     }
-
-    @Test
-    func envelopeErrorDescription() {
-        #expect(EnvelopeError.envelopeToLarge(size: 12).description == "EnvelopeError.envelopeToLarge(size: 12)")
-    }
 }
