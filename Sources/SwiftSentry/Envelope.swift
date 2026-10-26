@@ -90,29 +90,34 @@ public struct Envelope: Sendable {
     ) throws {
         try encoder.encode(self.header(dsn: dsn), into: &buffer)
         if let event {
-            let bb = try event.cause.encode(using: encoder)
-            let ih = ItemHeader(type: event.cause.type, length: bb.count, filename: nil, contentType: nil)
+            let data = try event.cause.encode(using: encoder)
+            let header = ItemHeader(
+                type: event.cause.type,
+                length: data.count,
+                filename: nil,
+                contentType: nil
+            )
             buffer.writeInteger(newLineByte)
-            try encoder.encode(ih, into: &buffer)
+            try encoder.encode(header, into: &buffer)
             buffer.writeInteger(newLineByte)
-            buffer.writeData(bb)
+            buffer.writeData(data)
             for attachment in event.attachments {
                 let indexStart = buffer.writerIndex
                 do {
-                    let bb: Data = try attachment.payload.dump()
-                    guard bb.count <= maxAttachmentSize else {
+                    let data: Data = try attachment.payload.dump()
+                    guard data.count <= maxAttachmentSize else {
                         continue
                     }
-                    let ah = ItemHeader(
+                    let header = ItemHeader(
                         type: .attachment,
-                        length: bb.count,
+                        length: data.count,
                         filename: attachment.filename,
                         contentType: attachment.contentType
                     )
                     buffer.writeInteger(newLineByte)
-                    try encoder.encode(ah, into: &buffer)
+                    try encoder.encode(header, into: &buffer)
                     buffer.writeInteger(newLineByte)
-                    buffer.writeData(bb)
+                    buffer.writeData(data)
                     guard buffer.writerIndex <= Sentry.maxEnvelopeUncompressedSize else {
                         throw EnvelopeError.envelopeToLarge(size: buffer.writerIndex)
                     }
@@ -129,7 +134,7 @@ public struct Envelope: Sendable {
 
 let newLineByte = Character("\n").asciiValue!
 
-public struct EnvelopeHeader: Encodable, Sendable {
+struct EnvelopeHeader: Encodable, Sendable {
     private static let RFC3339DateFormatter: DateFormatter = {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -138,10 +143,10 @@ public struct EnvelopeHeader: Encodable, Sendable {
         return dateFormatter
     }()
 
-    fileprivate let eventId: EventId?
-    private let dsn: String?
+    let eventId: EventId?
+    let dsn: String?
 
-    public init(eventId: UUID?, dsn: String?) {
+    init(eventId: UUID?, dsn: String?) {
         self.eventId = eventId.map(EventId.init)
         self.dsn = dsn
     }
@@ -152,7 +157,7 @@ public struct EnvelopeHeader: Encodable, Sendable {
         case sentAt = "sent_at"
     }
 
-    public func encode(to encoder: any Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         if let eventId {
             try container.encode(eventId, forKey: CodingKeys.eventId)
