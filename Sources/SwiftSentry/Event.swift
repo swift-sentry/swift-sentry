@@ -5,7 +5,8 @@ public import Foundation
 #endif
 public import Logging
 
-public struct EventId: RawRepresentable<UUID>, Codable, Sendable, Equatable {
+public struct EventId: RawRepresentable, Codable, Sendable, Equatable {
+    public typealias RawValue = UUID
     public var rawValue: UUID
     public init(rawValue: UUID) {
         self.rawValue = rawValue
