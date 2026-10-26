@@ -84,8 +84,11 @@ struct Dsn {
         }
 
         var segmentPaths = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard let lastSegment = segmentPaths.popLast() else {
+            throw Sentry.SwiftSentryError.InvalidArgumentException("The \"\(value)\" DSN must end with a project ID, e.g. \"https://<key>@<host>/<project-id>\".")
+        }
 
-        guard let projectId = Int(segmentPaths.removeLast()), projectId >= 0 else {
+        guard let projectId = Int(lastSegment), projectId >= 0 else {
             throw Sentry.SwiftSentryError.InvalidArgumentException("\"\(value)\" DSN must contain a valid project ID.")
         }
 
@@ -94,31 +97,31 @@ struct Dsn {
             host: host,
             port: parsedDsn.port ?? (scheme == "http" ? 80 : 443),
             projectId: projectId,
-            path: segmentPaths.joined(separator: "/"),
+            path: segmentPaths.isEmpty ? "" : "/" + segmentPaths.joined(separator: "/"),
             publicKey: user,
             secretKey: parsedDsn.password
         )
     }
 
     /// Returns the URL of the API for the store endpoint.
-    public func getStoreApiEndpointUrl() -> String {
+    func getStoreApiEndpointUrl() -> String {
         getBaseEndpointUrl() + "/store/"
     }
 
     /// Returns the URL of the API for the envelope endpoint.
-    public func getEnvelopeApiEndpointUrl() -> String {
+    func getEnvelopeApiEndpointUrl() -> String {
         getBaseEndpointUrl() + "/envelope/"
     }
 
-    public func getAuthHeader() -> String {
+    func getAuthHeader() -> String {
         "Sentry sentry_version=7, sentry_key=\(publicKey), sentry_client=\(Sentry.VERSION), sentry_timestamp=\(Date().timeIntervalSince1970)"
     }
 
     /// @see https://www.php.net/manual/en/language.oop5.magic.php#object.tostring
-    public func toString() -> String {
+    func toString() -> String {
         var url = "\(scheme)://\(publicKey)"
 
-        if let secretKey = secretKey {
+        if let secretKey {
             url += ":\(secretKey)"
         }
 

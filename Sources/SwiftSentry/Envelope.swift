@@ -1,74 +1,140 @@
-import Foundation
+public import Foundation
 import NIOCore
+import NIOFoundationCompat
 
-public enum EnvelopItemTypes: String {
-    case event
-    case transaction
-    case attachment
-    case session
-    case sessions
-    case userReport = "user_report"
-    case clientReport = "client_report"
-}
-
-private enum NewlineData {
-    static let newlineData = "\n".data(using: String.Encoding.utf8)!
-}
-
-public struct Envelope {
-    enum EnvelopeError: Error {
-        case tooManyErrorsOrTransactions(count: UInt64)
-        case eventIdRequiredButNotPresentInEnvelope
-        case envelopeToLarge(size: UInt64)
+public struct EnvelopeError: Error, Equatable, CustomStringConvertible {
+    enum Err: Error, Equatable {
+        case envelopeToLarge(size: Int)
     }
 
-    public var header: EnvelopeHeader
-    public var items: [EnvelopeItem]
-    public init(header: EnvelopeHeader, items: [EnvelopeItem]) {
-        self.header = header
-        self.items = items
-    }
-    /// checks some requirements from sentry for envelopes
-    private func checkValidity() throws {
-        var eventTransactionCount: UInt64 = 0
-        var itemsReqEventIdCount: UInt64 = 0
-        (eventTransactionCount, itemsReqEventIdCount) = items.reduce(
-            into: (eventTransactionCount, itemsReqEventIdCount)
-        ) { acc, aci in
-            acc.0 += (aci.header.type == "transaction" || aci.header.type == "event") ? 1 : 0
-            acc.1 += (aci.header.type == "user_report" || aci.header.type == "attachment") ? 1 : 0
-        }
-        guard eventTransactionCount < 2 else {
-            throw EnvelopeError.tooManyErrorsOrTransactions(count: eventTransactionCount)
-            // Envelope may contain at most one error or one transaction item
-        }
-        guard (itemsReqEventIdCount + eventTransactionCount) == 0 || header.eventId != nil else {
-            throw EnvelopeError.eventIdRequiredButNotPresentInEnvelope
-        }
-    }
-    /// Turns the items of the envelope to data and joins them to one data instance
-    private func prepData(encoder: JSONEncoder) throws -> Data {
-        let dumpedItems = try items.map { try $0.dump(encoder: encoder) }
+    var error: Err
 
-        let len = dumpedItems.map { $0.count }.reduce(into: 0) { $0 += $1 }
-
-        return dumpedItems.reduce(into: Data(capacity: len)) {
-            $0.append($1)
-        }
+    public static func envelopeToLarge(size: Int) -> Self {
+        Self(error: .envelopeToLarge(size: size))
     }
-    /// Turns the envelope into data in the correct format for sentry
-    public func dump(encoder: JSONEncoder) throws -> Data {
-        try checkValidity()
-        var returnData = try encoder.encode(header) + NewlineData.newlineData
-        returnData.append(try prepData(encoder: encoder))
-        guard returnData.count <= Sentry.maxEnvelopeUncompressedSize else {
-            throw EnvelopeError.envelopeToLarge(size: UInt64(returnData.count))
+
+    public var description: String {
+        switch error {
+        case .envelopeToLarge(let size): "EnvelopeError.envelopeToLarge(size: \(size))"
         }
-        return returnData
     }
 }
 
-public struct EnvelopeHeader: Encodable {
+public struct Envelope: Sendable {
+    public enum ItemType: String, Sendable, Codable {
+        case event
+        case transaction
+        case attachment
+    }
+
+    struct EventInfo: Sendable {
+        enum Cause: Sendable {
+            case event(Event)
+            // Missing
+            // case transaction(Transaction)
+            // case feedback
+
+            var id: UUID {
+                switch self {
+                case .event(let event):
+                    event.event_id.rawValue
+                }
+            }
+
+            var type: ItemType {
+                switch self {
+                case .event:
+                    .event
+                }
+            }
+
+            func encode(using encoder: JSONEncoder) throws -> Data {
+                switch self {
+                case .event(let event):
+                    try encoder.encode(event)
+                }
+            }
+        }
+
+        var cause: Cause
+        var attachments: [Attachment]
+    }
+
+    var event: EventInfo?
+    // Missing
+    // var span: Span?
+    // var log: Logs?
+    // var metric: Metrics?
+    // var sessions: [Session]
+    // var checkIn: CheckIn?
+    // var clientReports: [ClientReport]
+    // var replay: (ReplayEvent, ReplayRecording)?
+
+    public var attachments: [Attachment]? {
+        event?.attachments
+    }
+
+    public init(event: Event, attachments: [Attachment] = []) {
+        self.event = .init(cause: .event(event), attachments: attachments)
+    }
+
+    func header(dsn: String?) -> EnvelopeHeader {
+        return EnvelopeHeader(eventId: event?.cause.id, dsn: dsn)
+    }
+
+    func write(
+        into buffer: inout ByteBuffer,
+        encoder: JSONEncoder,
+        maxAttachmentSize: Int = Sentry.defaultMaxAttachmentSize,
+        dsn: String? = nil
+    ) throws {
+        try encoder.encode(self.header(dsn: dsn), into: &buffer)
+        if let event {
+            let data = try event.cause.encode(using: encoder)
+            let header = ItemHeader(
+                type: event.cause.type,
+                length: data.count,
+                filename: nil,
+                contentType: nil
+            )
+            buffer.writeInteger(newLineByte)
+            try encoder.encode(header, into: &buffer)
+            buffer.writeInteger(newLineByte)
+            buffer.writeData(data)
+            for attachment in event.attachments {
+                let indexStart = buffer.writerIndex
+                do {
+                    let data: Data = try attachment.payload.dump()
+                    guard data.count <= maxAttachmentSize else {
+                        continue
+                    }
+                    let header = ItemHeader(
+                        type: .attachment,
+                        length: data.count,
+                        filename: attachment.filename,
+                        contentType: attachment.contentType
+                    )
+                    buffer.writeInteger(newLineByte)
+                    try encoder.encode(header, into: &buffer)
+                    buffer.writeInteger(newLineByte)
+                    buffer.writeData(data)
+                    guard buffer.writerIndex <= Sentry.maxEnvelopeUncompressedSize else {
+                        throw EnvelopeError.envelopeToLarge(size: buffer.writerIndex)
+                    }
+                } catch {
+                    buffer.moveWriterIndex(to: indexStart)
+                }
+            }
+        }
+        guard buffer.writerIndex <= Sentry.maxEnvelopeUncompressedSize else {
+            throw EnvelopeError.envelopeToLarge(size: buffer.writerIndex)
+        }
+    }
+}
+
+let newLineByte = Character("\n").asciiValue!
+
+struct EnvelopeHeader: Encodable, Sendable {
     private static let RFC3339DateFormatter: DateFormatter = {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -77,164 +143,105 @@ public struct EnvelopeHeader: Encodable {
         return dateFormatter
     }()
 
-    fileprivate let eventId: UUID?
-    private let dsn: String?
-    private let sdk: String?
+    let eventId: EventId?
+    let dsn: String?
 
-    public init(eventId: UUID?, dsn: String?, sdk: String?) {
-        self.eventId = eventId
+    init(eventId: UUID?, dsn: String?) {
+        self.eventId = eventId.map(EventId.init)
         self.dsn = dsn
-        self.sdk = sdk
     }
 
     private enum CodingKeys: String, CodingKey {
         case eventId = "event_id"
         case dsn
-        case sdk
         case sentAt = "sent_at"
     }
 
-    public func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        if let eventId = eventId {
+        if let eventId {
             try container.encode(eventId, forKey: CodingKeys.eventId)
         }
-        if let dsn = dsn {
+        if let dsn {
             try container.encode(dsn, forKey: CodingKeys.dsn)
-        }
-        if let sdk = sdk {
-            try container.encode(sdk, forKey: CodingKeys.sdk)
         }
         try container.encode(EnvelopeHeader.RFC3339DateFormatter.string(from: Date()), forKey: CodingKeys.sentAt)
     }
 }
 
-public struct EnvelopeItemHeader: Codable {
-    fileprivate let type: String
-    fileprivate var length: UInt64
-    fileprivate let filename: String?
-    fileprivate let contentType: String?
+extension Envelope {
+    struct ItemHeader: Codable, Sendable {
+        let type: ItemType
+        fileprivate var length: Int
+        fileprivate let filename: String?
+        fileprivate let contentType: String?
 
-    public init(type: String, length: UInt64 = 0, filename: String?, contentType: String?) {
-        self.type = type
-        self.length = length
-        self.filename = filename
-        self.contentType = contentType
-    }
+        init(type: ItemType = .event, length: Int = 0, filename: String?, contentType: String?) {
+            self.type = type
+            self.length = length
+            self.filename = filename
+            self.contentType = contentType
+        }
 
-    private enum CodingKeys: String, CodingKey {
-        case type
-        case length
-        case filename
-        case contentType = "content_type"
+        private enum CodingKeys: String, CodingKey {
+            case type
+            case length
+            case filename
+            case contentType = "content_type"
+        }
     }
 }
 
-public struct EnvelopeItem {
-    public enum EnvelopeItemError: Error {
-        case attachmentToLarge(size: UInt64)
-        case eventOrTransactionToLarge(size: UInt64)
-        case sizeMissmatch(givenSize: UInt64, actualSize: UInt64)
-    }
-
-    fileprivate var header: EnvelopeItemHeader
-    fileprivate let data: Data
-    public init(header: EnvelopeItemHeader, data: Data) {
-        self.header = header
-        self.header.length = UInt64(data.count)
-        self.data = data
-    }
-
-    public func dump(encoder: JSONEncoder) throws -> Data {
-        let returnData = try encoder.encode(header) + NewlineData.newlineData + data + NewlineData.newlineData
-        guard header.type != "attachment" || returnData.count <= Sentry.maxEachAtachment else {
-            throw EnvelopeItemError.attachmentToLarge(
-                size: UInt64(returnData.count)
-            )
-        }
-        guard (header.type != "event" && header.type != "transaction") || (returnData.count <= Sentry.maxEventAndTransaction) else {
-            throw EnvelopeItemError.eventOrTransactionToLarge(size: UInt64(returnData.count))
-        }
-        return returnData
-    }
-}
-
-public struct Attachment: CustomStringConvertible {
+public struct Attachment: CustomStringConvertible, Sendable {
     public enum AttachmentError: Error {
-        /// This error shouldn't be able to be thrown, but it prevents an
-        /// forceful unwrapping from crashing the application
-        case noDataOrFilenameOrPath
         /// Error in case the File on Disk of the Attachment couldn't be reaad for some reason
         case fileReadFailed
     }
 
     public static let defaultContentType = "application/octet-stream"
-    fileprivate let filename: String
+    fileprivate let filename: String?
     fileprivate let payload: AttachmentPayload
-    fileprivate let contentType: String
+    fileprivate let contentType: String?
     public var description: String {
-        "Attachment: \(filename)"
+        "Attachment: \(filename, default: "(unnamed attachment)")"
     }
-    /// converts the Attachment to an EnvelopeItem
-    /// if the Attachment is a FileAttachment, the file gets read at this point
-    public func toEnvelopeItem() throws -> EnvelopeItem {
-        var tempData = try payload.dump()
-        if tempData.count > Sentry.maxAttachmentSize {
-            tempData.removeAll()
-        }
-        return EnvelopeItem(
-            header: EnvelopeItemHeader(
-                type: "attachment",
-                length: UInt64(tempData.count),
-                filename: filename,
-                contentType: contentType
-            ),
-            data: tempData
-        )
-    }
+
     /// Constructs an Attachment with a filename and the given data
-    public init(data: Data, filename: String, contentType: String = Attachment.defaultContentType) {
+    public init(data: any Sequence<UInt8> & Sendable, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
-        payload = .fromPayload([UInt8](data))
+        payload = .fromPayload(data)
         self.contentType = contentType
     }
+
     /// Constructs an Attachment from a file on disk, if no filename is given, one gets
     /// inferred from path
-    public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) throws {
-        var path = path
-        if let filename = filename {
-            self.filename = filename
-        } else {
-            let tmep = path.components(separatedBy: "/")
-            guard let filename = tmep.last else {
-                throw AttachmentError.noDataOrFilenameOrPath
-            }
-            self.filename = filename
-            path = tmep.dropLast().joined(separator: "/")
-        }
-
-        payload = .fromFile(path, self.filename)
+    public init(path: String, filename: String? = nil, contentType: String = Attachment.defaultContentType) {
+        let url = URL(filePath: path)
+        self.filename = filename ?? url.lastPathComponent
+        payload = .fromFile(url)
         self.contentType = contentType
     }
+
     /// Contructs an Attachment from a file on disk, without inferring the filename
-    public init(path: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
+    public init(directory: String? = nil, filename: String, contentType: String = Attachment.defaultContentType) {
         self.filename = filename
-        payload = .fromFile(path, filename)
+        let url = URL(filePath: directory ?? ".").appending(path: filename)
+        payload = .fromFile(url)
         self.contentType = contentType
     }
 
-    public enum AttachmentPayload {
-        case fromPayload([UInt8])
-        case fromFile(String?, String)
+    public enum AttachmentPayload: Sendable {
+        case fromPayload(any Sequence<UInt8> & Sendable)
+        case fromFile(URL)
         public func dump() throws -> Data {
             switch self {
-            case let .fromFile(path, filename):
+            case .fromFile(let path):
                 do {
-                    return try Data(contentsOf: URL(fileURLWithPath: (path ?? "") + filename))
+                    return try Data(contentsOf: path)
                 } catch {
                     throw AttachmentError.fileReadFailed
                 }
-            case let .fromPayload(data):
+            case .fromPayload(let data):
                 return Data(data)
             }
         }

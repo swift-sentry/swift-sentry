@@ -1,0 +1,64 @@
+# Local Sentry-compatible backend for integration tests.
+#
+# Uses GlitchTip (https://glitchtip.com), an open-source server that speaks the
+# Sentry ingest protocol (envelope endpoint, DSN auth). A full self-hosted
+# Sentry needs ~40 containers and 16 GB RAM, which is impractical for tests.
+#
+#   docker compose up -d --wait
+#   swift test
+#   docker compose down -v
+#
+# On startup the server is bootstrapped with:
+#   user     test@example.com / admin_pass   (web UI at http://localhost:8000)
+#   org      "org", project "project"
+#   token    dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+#
+# The DSN's public key is generated on first start. Fetch it with:
+#   curl -s -H "Authorization: Bearer $(printf 'd%.0s' {1..64})" \
+#     http://localhost:8000/api/0/projects/org/project/keys/ | jq -r '.[0].dsn.public'
+
+name: swift-sentry-integration
+
+services:
+  postgres:
+    image: postgres:18
+    command: -c max_locks_per_transaction=512
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    tmpfs:
+      # Throwaway data; keeps runs isolated and fast.
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  glitchtip:
+    image: glitchtip/glitchtip:6.2.6
+    # Web server and background worker in one process. Without Valkey the
+    # cache lives in Postgres, and the start script runs bootstrap_dev before
+    # creating that table, so create it first.
+    command: sh -c "python manage.py createcachetable && exec ./bin/run-all-in-one.sh"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${SENTRY_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgres://postgres@postgres:5432/postgres
+      # Empty disables Valkey; Postgres is used for cache and task queue.
+      VALKEY_URL: ""
+      SECRET_KEY: integration-tests-only
+      GLITCHTIP_DOMAIN: http://localhost:${SENTRY_PORT:-8000}
+      # Required by bootstrap_dev.
+      DEBUG: "true"
+      GLITCHTIP_BOOTSTRAP_DEV: "true"
+      EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
+      LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD-SHELL", "python3 /code/healthcheck.py || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
