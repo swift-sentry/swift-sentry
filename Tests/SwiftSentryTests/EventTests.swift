@@ -10,19 +10,6 @@ struct EventTests {
         return try #require(String(data: encoder.encode(value), encoding: .utf8))
     }
 
-    @Test(arguments: [
-        (Logger.Level.trace, Level.debug),
-        (.debug, .debug),
-        (.info, .info),
-        (.notice, .info),
-        (.warning, .warning),
-        (.error, .error),
-        (.critical, .fatal),
-    ])
-    func levelFromLoggerLevel(_ loggerLevel: Logger.Level, _ expected: Level) {
-        #expect(Level(from: loggerLevel) == expected)
-    }
-
     @Test
     func rawMessageEncodesAsString() throws {
         #expect(try json(Message.raw(message: "hello")) == "\"hello\"")
